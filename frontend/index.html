@@ -1,0 +1,2131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>HA Admin — SOC Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c10;
+  --bg1:#0d1117;
+  --bg2:#131920;
+  --bg3:#1a2230;
+  --border:#1e2d3d;
+  --border2:#243447;
+  --text:#c9d3e0;
+  --text2:#7a8fa6;
+  --text3:#4a5e72;
+  --cyan:#00d4ff;
+  --cyan-dim:#003d4d;
+  --green:#00e676;
+  --green-dim:#003318;
+  --red:#ff4455;
+  --red-dim:#3d0a10;
+  --amber:#ffb300;
+  --amber-dim:#3d2a00;
+  --blue:#4db8ff;
+  --blue-dim:#0a2a3d;
+  --purple:#c084fc;
+  --purple-dim:#2a1040;
+  --font-mono:'JetBrains Mono',monospace;
+  --font-ui:'Space Grotesk',sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-mono);font-size:13px;line-height:1.5;overflow:hidden}
+
+/* ── Scanline overlay ── */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,.012) 2px,rgba(0,212,255,.012) 4px);pointer-events:none;z-index:9999}
+
+/* ── Layout ── */
+.shell{display:grid;grid-template-rows:48px 40px 38px 1fr 36px;height:100vh;overflow:hidden}
+
+/* ── Topbar ── */
+.topbar{background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:16px;position:relative}
+.topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:.3}
+.logo{font-family:var(--font-ui);font-size:15px;font-weight:600;letter-spacing:2px;color:var(--cyan);text-transform:uppercase}
+.logo span{color:var(--text2);font-weight:400}
+.topbar-pills{display:flex;gap:8px;margin-left:4px}
+.pill{font-size:10px;padding:2px 8px;border-radius:2px;font-weight:500;letter-spacing:.5px;display:flex;align-items:center;gap:4px}
+.pill-red{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,68,85,.25)}
+.pill-amber{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,179,0,.25)}
+.pill-green{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,230,118,.2)}
+.pill-cyan{background:var(--cyan-dim);color:var(--cyan);border:1px solid rgba(0,212,255,.2)}
+.blink{animation:blink .8s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:11px;color:var(--text2)}
+.topbar-right .clock{color:var(--cyan);font-size:12px;letter-spacing:1px}
+.conn-status{display:flex;align-items:center;gap:6px;font-size:11px}
+.conn-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+.conn-dot.off{background:var(--red);box-shadow:0 0 6px var(--red)}
+.conn-dot.pend{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+
+/* ── Config bar ── */
+.configbar{background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:10px}
+.cfg-label{font-size:10px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase}
+.cfg-input{background:var(--bg2);border:1px solid var(--border2);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:4px 8px;border-radius:2px;width:280px;outline:none}
+.cfg-input:focus{border-color:var(--cyan);color:var(--cyan)}
+.cfg-input-sm{width:180px}
+.cfg-btn{background:var(--cyan-dim);border:1px solid rgba(0,212,255,.3);color:var(--cyan);font-family:var(--font-mono);font-size:11px;padding:4px 14px;border-radius:2px;cursor:pointer;letter-spacing:.5px;transition:all .15s}
+.cfg-btn:hover{background:rgba(0,212,255,.15);border-color:var(--cyan)}
+.cfg-btn.danger{background:var(--red-dim);border-color:rgba(255,68,85,.3);color:var(--red)}
+.cfg-btn.danger:hover{background:rgba(255,68,85,.15)}
+
+/* ── Nav ── */
+.nav{background:var(--bg1);border-bottom:1px solid var(--border);display:flex;padding:0 20px;gap:2px}
+.nav-tab{padding:9px 16px;font-size:11px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);display:flex;align-items:center;gap:6px;letter-spacing:.3px;transition:all .15s;font-family:var(--font-ui);font-weight:500}
+.nav-tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+.nav-tab:hover:not(.active){color:var(--text)}
+.nav-badge{font-size:9px;background:var(--red-dim);color:var(--red);padding:1px 5px;border-radius:2px;border:1px solid rgba(255,68,85,.25)}
+.nav-badge.warn{background:var(--amber-dim);color:var(--amber);border-color:rgba(255,179,0,.25)}
+
+/* ── Main ── */
+.main{overflow-y:auto;overflow-x:hidden;background:var(--bg);padding:14px 20px;display:flex;flex-direction:column;gap:12px;min-height:0}
+
+/* ── Alert banner ── */
+.alert-banner{background:var(--red-dim);border:1px solid rgba(255,68,85,.3);border-radius:2px;padding:10px 14px;display:flex;align-items:center;gap:12px;animation:alertpulse 2s ease-in-out infinite}
+@keyframes alertpulse{0%,100%{border-color:rgba(255,68,85,.3)}50%{border-color:rgba(255,68,85,.7)}}
+.alert-banner i{color:var(--red);font-size:20px;flex-shrink:0}
+.alert-title{color:var(--red);font-weight:600;font-size:12px;letter-spacing:.5px;margin-bottom:2px;font-family:var(--font-ui)}
+.alert-sub{font-size:10px;color:rgba(255,68,85,.7)}
+.alert-actions{margin-left:auto;display:flex;gap:8px}
+.act-btn{font-size:10px;padding:4px 12px;border-radius:2px;cursor:pointer;font-family:var(--font-mono);letter-spacing:.3px;transition:all .15s}
+.act-red{background:rgba(255,68,85,.1);border:1px solid rgba(255,68,85,.4);color:var(--red)}
+.act-red:hover{background:rgba(255,68,85,.25)}
+.act-cyan{background:var(--cyan-dim);border:1px solid rgba(0,212,255,.3);color:var(--cyan)}
+.act-cyan:hover{background:rgba(0,212,255,.15)}
+
+/* ── Metrics row ── */
+.metrics-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.metric{background:var(--bg1);border:1px solid var(--border);border-radius:2px;padding:12px 14px;position:relative;overflow:hidden}
+.metric::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.metric.crit::before{background:var(--red)}
+.metric.warn::before{background:var(--amber)}
+.metric.ok::before{background:var(--green)}
+.metric.info::before{background:var(--blue)}
+.metric.purple::before{background:var(--purple)}
+.metric-label{font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;font-family:var(--font-ui)}
+.metric-val{font-size:28px;font-weight:300;letter-spacing:-1px;line-height:1}
+.metric-val.red{color:var(--red)}
+.metric-val.amber{color:var(--amber)}
+.metric-val.green{color:var(--green)}
+.metric-val.blue{color:var(--blue)}
+.metric-val.purple{color:var(--purple)}
+.metric-sub{font-size:10px;color:var(--text3);margin-top:4px}
+
+/* ── Grid ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:12px}
+
+/* ── Panel card ── */
+.pcard{background:var(--bg1);border:1px solid var(--border);border-radius:2px;overflow:hidden;display:flex;flex-direction:column;min-height:120px}
+.phead{padding:9px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.ptitle{font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;letter-spacing:.3px;font-family:var(--font-ui);font-weight:500}
+.ptitle i{color:var(--cyan);font-size:14px}
+.pbody{flex:1;overflow-y:auto}
+
+/* ── Log rows ── */
+.log-row{padding:5px 14px;border-bottom:1px solid rgba(30,45,61,.5);display:grid;grid-template-columns:70px 64px 1fr 100px;gap:8px;align-items:center;cursor:pointer;transition:background .1s;font-size:11px}
+.log-row:hover{background:var(--bg2)}
+.log-ts{color:var(--text3);font-size:10px}
+.log-lvl{font-size:9px;letter-spacing:.5px;font-weight:600;padding:1px 5px;border-radius:1px}
+.log-lvl.crit{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,68,85,.3)}
+.log-lvl.warn{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,179,0,.3)}
+.log-lvl.info{background:var(--blue-dim);color:var(--blue);border:1px solid rgba(77,184,255,.2)}
+.log-lvl.ok{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,230,118,.2)}
+.log-msg{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-comp{color:var(--text3);font-size:10px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── User rows ── */
+.user-row{padding:8px 14px;border-bottom:1px solid rgba(30,45,61,.5);display:grid;grid-template-columns:32px 1fr 80px 72px 70px 90px;gap:8px;align-items:center;cursor:pointer;transition:background .1s}
+.user-row:hover{background:var(--bg2)}
+.avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;font-family:var(--font-ui)}
+.av-red{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,68,85,.3)}
+.av-green{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,230,118,.2)}
+.av-blue{background:var(--blue-dim);color:var(--blue);border:1px solid rgba(77,184,255,.2)}
+.av-amber{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,179,0,.25)}
+.av-purple{background:var(--purple-dim);color:var(--purple);border:1px solid rgba(192,132,252,.2)}
+.user-name{font-size:12px;color:var(--text);font-family:var(--font-ui);font-weight:500}
+.user-sub{font-size:10px;color:var(--text3)}
+.tbl-center{text-align:center;font-size:11px}
+.row-btn{font-size:9px;padding:3px 8px;border-radius:2px;cursor:pointer;font-family:var(--font-mono);letter-spacing:.3px;transition:all .15s;background:transparent;border:1px solid var(--border2);color:var(--text2)}
+.row-btn:hover{border-color:var(--red);color:var(--red)}
+.row-btn.ok:hover{border-color:var(--green);color:var(--green)}
+
+/* ── Device grid ── */
+.dev-grid{display:grid;grid-template-columns:repeat(3,1fr)}
+.dev-item{padding:9px 12px;border-bottom:1px solid rgba(30,45,61,.4);border-right:1px solid rgba(30,45,61,.4);display:flex;align-items:center;gap:9px;cursor:pointer;transition:background .1s}
+.dev-item:hover{background:var(--bg2)}
+.dev-item:nth-child(3n){border-right:none}
+.dev-icon{width:32px;height:32px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.di-on{background:var(--green-dim);color:var(--green)}
+.di-off{background:var(--bg2);color:var(--text3)}
+.di-warn{background:var(--amber-dim);color:var(--amber)}
+.di-crit{background:var(--red-dim);color:var(--red)}
+.dev-name{font-size:11px;font-family:var(--font-ui);font-weight:500;color:var(--text)}
+.dev-state{font-size:10px;color:var(--text3)}
+
+/* ── Auto rows ── */
+.auto-row{padding:8px 14px;border-bottom:1px solid rgba(30,45,61,.5);display:grid;grid-template-columns:1fr 90px 80px 70px 70px;gap:8px;align-items:center}
+.auto-name{font-size:12px;font-family:var(--font-ui);font-weight:500;color:var(--text)}
+.auto-sub{font-size:10px;color:var(--text3);margin-top:1px}
+
+/* ── Audit findings ── */
+.finding{padding:10px 14px;border-bottom:1px solid rgba(30,45,61,.5);display:grid;grid-template-columns:70px 1fr;gap:12px;align-items:start}
+.finding:last-child{border-bottom:none}
+.finding-sev{font-size:9px;letter-spacing:.5px;font-weight:600;padding:2px 6px;border-radius:1px;text-align:center;white-space:nowrap}
+.finding-sev.crit{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,68,85,.3)}
+.finding-sev.warn{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,179,0,.3)}
+.finding-sev.info{background:var(--blue-dim);color:var(--blue);border:1px solid rgba(77,184,255,.2)}
+.finding-title{font-size:12px;font-family:var(--font-ui);font-weight:500;color:var(--text);margin-bottom:3px}
+.finding-detail{font-size:10px;color:var(--text3);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.finding-action{font-size:10px;color:var(--cyan)}
+
+/* ── Threat bars ── */
+.tbar-row{margin-bottom:10px}
+.tbar-label{display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px}
+.tbar-track{height:3px;background:var(--border);border-radius:1px;overflow:hidden}
+.tbar-fill{height:100%;border-radius:1px;transition:width .6s}
+
+/* ── Score ring ── */
+.score-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px}
+.score-num{font-size:48px;font-weight:300;letter-spacing:-2px;line-height:1}
+.score-label{font-size:10px;color:var(--text3);letter-spacing:1px;margin-top:4px;font-family:var(--font-ui)}
+
+/* ── Tag / badge ── */
+.tag{font-size:9px;padding:1px 6px;border-radius:1px;letter-spacing:.3px;font-weight:600}
+.tag-red{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,68,85,.25)}
+.tag-green{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,230,118,.2)}
+.tag-amber{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,179,0,.25)}
+.tag-blue{background:var(--blue-dim);color:var(--blue);border:1px solid rgba(77,184,255,.2)}
+.tag-purple{background:var(--purple-dim);color:var(--purple);border:1px solid rgba(192,132,252,.2)}
+.tag-cyan{background:var(--cyan-dim);color:var(--cyan);border:1px solid rgba(0,212,255,.2)}
+
+/* ── Footer ── */
+.footer{background:var(--bg1);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:16px;font-size:10px;color:var(--text3)}
+.footer-actions{margin-left:auto;display:flex;gap:8px}
+
+/* ── Spinner ── */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border2);border-top-color:var(--cyan);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Empty state ── */
+.empty{padding:40px;text-align:center;color:var(--text3);font-size:12px}
+.empty i{font-size:32px;display:block;margin-bottom:8px;color:var(--border2)}
+
+/* ── Filter bar ── */
+.filterbar{padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+.filter-select{background:var(--bg2);border:1px solid var(--border2);color:var(--text2);font-family:var(--font-mono);font-size:10px;padding:3px 6px;border-radius:2px;outline:none}
+.filter-select:focus{border-color:var(--cyan)}
+.search-input{background:var(--bg2);border:1px solid var(--border2);color:var(--text);font-family:var(--font-mono);font-size:10px;padding:3px 8px;border-radius:2px;outline:none;flex:1}
+.search-input:focus{border-color:var(--cyan)}
+
+/* ── Section head ── */
+.shead{padding:5px 14px 4px;font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(30,45,61,.5);background:var(--bg2)}
+
+/* ── Config display ── */
+.code-block{padding:12px 14px;font-size:11px;line-height:2;color:var(--text);border-radius:0}
+.code-key{color:var(--cyan)}
+.code-val-ok{color:var(--green)}
+.code-val-warn{color:var(--amber)}
+.code-comment{color:var(--text3)}
+.code-err{color:var(--red);font-size:10px}
+
+/* ── IP table ── */
+.ip-table{width:100%;border-collapse:collapse;font-size:11px}
+.ip-table td{padding:7px 14px;border-bottom:1px solid rgba(30,45,61,.5)}
+.ip-table tr:last-child td{border-bottom:none}
+.ip-table tr:hover td{background:var(--bg2)}
+.ip-table td:first-child{color:var(--cyan);font-family:var(--font-mono)}
+.block-btn{font-size:9px;padding:2px 8px;border-radius:2px;cursor:pointer;font-family:var(--font-mono);background:var(--red-dim);border:1px solid rgba(255,68,85,.3);color:var(--red);transition:all .15s}
+.block-btn:hover{background:rgba(255,68,85,.2)}
+.block-btn.done{background:transparent;border-color:var(--border2);color:var(--text3);cursor:default}
+
+/* ── Refresh btn ── */
+.refresh-btn{font-size:10px;padding:3px 10px;border-radius:2px;cursor:pointer;font-family:var(--font-mono);background:transparent;border:1px solid var(--border2);color:var(--text2);transition:all .15s;display:flex;align-items:center;gap:4px}
+.refresh-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--bg1);border:1px solid var(--border2);border-radius:2px;padding:20px;min-width:420px;max-width:560px}
+.modal-title{font-family:var(--font-ui);font-size:14px;font-weight:600;color:var(--cyan);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.modal-body{font-size:11px;color:var(--text2);line-height:1.8;margin-bottom:16px}
+.modal-body code{background:var(--bg2);border:1px solid var(--border);padding:2px 6px;border-radius:2px;color:var(--cyan);font-family:var(--font-mono);font-size:10px}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px}
+
+/* ── Device list rows (replaces grid) ── */
+.dev-list-row{padding:7px 12px;border-bottom:1px solid rgba(30,45,61,.5);display:grid;grid-template-columns:32px 1fr 70px 60px;gap:8px;align-items:center;cursor:pointer;transition:background .12s}
+.dev-list-row:hover{background:var(--bg2)}
+.dev-list-row.selected{background:var(--bg3);border-left:2px solid var(--cyan)}
+.dev-list-icon{width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+
+/* ── Device detail panel ── */
+.detail-header{padding:14px 14px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.detail-icon{width:44px;height:44px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.detail-name{font-size:14px;font-family:var(--font-ui);font-weight:600;color:var(--text)}
+.detail-eid{font-size:10px;color:var(--text3);margin-top:2px;font-family:var(--font-mono)}
+.detail-section{padding:10px 14px;border-bottom:1px solid rgba(30,45,61,.4)}
+.detail-section-title{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;font-family:var(--font-ui)}
+.detail-grid{display:grid;grid-template-columns:110px 1fr;gap:4px 8px;font-size:11px}
+.detail-key{color:var(--text3)}
+.detail-val{color:var(--cyan);word-break:break-all;font-family:var(--font-mono)}
+.detail-val.ok{color:var(--green)}
+.detail-val.warn{color:var(--amber)}
+.detail-val.err{color:var(--red)}
+.detail-history{padding:10px 14px}
+.hist-row{padding:4px 0;border-bottom:1px solid rgba(30,45,61,.3);display:grid;grid-template-columns:120px 70px 1fr;gap:8px;font-size:10px}
+.hist-row:last-child{border-bottom:none}
+
+/* ── Expandable log rows ── */
+.log-expand-row{cursor:pointer;transition:background .1s}
+.log-expand-row:hover{background:var(--bg2)}
+.log-expand-row.open{background:var(--bg2);border-left:2px solid var(--cyan)}
+.log-detail-expand{display:none;padding:10px 14px 12px 28px;background:var(--bg2);border-bottom:1px solid var(--border);border-left:2px solid var(--cyan);font-size:10px;line-height:1.8}
+.log-detail-expand.visible{display:block}
+.log-detail-grid{display:grid;grid-template-columns:120px 1fr;gap:3px 10px}
+.log-dk{color:var(--text3)}
+.log-dv{color:var(--cyan);font-family:var(--font-mono);word-break:break-all}
+.log-dv.red{color:var(--red)}
+.log-dv.green{color:var(--green)}
+.log-dv.amber{color:var(--amber)}
+
+/* ── Device action log rows (full detail) ── */
+.dact-row{border-bottom:1px solid rgba(30,45,61,.5);cursor:pointer;transition:background .1s}
+.dact-row:hover .dact-main{background:var(--bg2)}
+.dact-row.open .dact-main{background:var(--bg2);border-left:2px solid var(--cyan)}
+.dact-main{padding:8px 14px;display:grid;grid-template-columns:120px 44px 160px 130px 120px 1fr;gap:8px;align-items:center;font-size:11px}
+.dact-expand{display:none;padding:10px 14px 12px 40px;background:rgba(0,212,255,.03);border-bottom:1px solid rgba(0,212,255,.1);border-left:2px solid var(--cyan)}
+.dact-expand.visible{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;font-size:10px}
+.dact-field{display:flex;flex-direction:column;gap:2px}
+.dact-field-key{color:var(--text3);font-size:9px;letter-spacing:.5px;text-transform:uppercase}
+.dact-field-val{color:var(--text);font-family:var(--font-mono)}
+.dact-field-val.user{color:var(--cyan)}
+.dact-field-val.auto{color:var(--purple)}
+.dact-field-val.api{color:var(--amber)}
+.dact-field-val.on{color:var(--green)}
+.dact-field-val.off{color:var(--red)}
+.platform-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 8px;border-radius:2px;border:1px solid var(--border)}
+.platform-mobile{background:rgba(0,212,255,.08);color:var(--cyan);border-color:rgba(0,212,255,.2)}
+.platform-desktop{background:rgba(77,184,255,.08);color:var(--blue);border-color:rgba(77,184,255,.2)}
+.platform-auto{background:rgba(192,132,252,.08);color:var(--purple);border-color:rgba(192,132,252,.2)}
+.platform-api{background:rgba(255,179,0,.08);color:var(--amber);border-color:rgba(255,179,0,.2)}
+/* ── Log sub-nav ── */
+.log-subnav{padding:8px 16px;font-size:11px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:6px;border-right:1px solid var(--border);font-family:var(--font-ui);font-weight:500;transition:all .15s;white-space:nowrap}
+.log-subnav:hover{color:var(--text);background:var(--bg2)}
+.log-subnav.active{color:var(--cyan);background:var(--bg2)}
+.log-subnav i{font-size:13px}
+
+/* ── Auth log rows ── */
+.auth-row{padding:6px 14px;border-bottom:1px solid rgba(30,45,61,.5);display:grid;grid-template-columns:120px 70px 120px 1fr;gap:10px;align-items:center;font-size:11px;cursor:pointer;transition:background .1s}
+.auth-row:hover{background:var(--bg2)}
+.auth-success{color:var(--green)}
+.auth-failed{color:var(--red)}
+.auth-logout{color:var(--amber)}
+.auth-info{color:var(--blue)}
+
+/* ── Device action rows ── */
+.dev-action-row{padding:7px 14px;border-bottom:1px solid rgba(30,45,61,.5);display:grid;grid-template-columns:120px 180px 80px 140px 1fr;gap:10px;align-items:center;font-size:11px;cursor:pointer;transition:background .1s}
+.dev-action-row:hover{background:var(--bg2)}
+.action-pill{font-size:9px;padding:2px 7px;border-radius:2px;font-weight:600;letter-spacing:.5px;text-align:center}
+.action-ON{background:rgba(0,230,118,.1);color:var(--green);border:1px solid rgba(0,230,118,.25)}
+.action-OFF{background:rgba(255,68,85,.1);color:var(--red);border:1px solid rgba(255,68,85,.25)}
+.action-LOCKED{background:rgba(255,179,0,.1);color:var(--amber);border:1px solid rgba(255,179,0,.25)}
+.action-UNLOCKED{background:rgba(255,68,85,.12);color:var(--red);border:1px solid rgba(255,68,85,.3)}
+.action-TRIGGER{background:rgba(192,132,252,.1);color:var(--purple);border:1px solid rgba(192,132,252,.25)}
+.action-AUTO{background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.2)}
+.action-EVENT{background:rgba(122,143,166,.1);color:var(--text2);border:1px solid rgba(122,143,166,.2)}
+.action-SCENE{background:rgba(192,132,252,.1);color:var(--purple);border:1px solid rgba(192,132,252,.2)}
+.action-SCRIPT{background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.2)}
+.action-OPEN{background:rgba(255,179,0,.1);color:var(--amber);border:1px solid rgba(255,179,0,.2)}
+.action-CLOSE{background:rgba(77,184,255,.1);color:var(--blue);border:1px solid rgba(77,184,255,.2)}
+.trigger-user{color:var(--cyan);display:flex;align-items:center;gap:5px;font-size:10px}
+.trigger-auto{color:var(--purple);display:flex;align-items:center;gap:5px;font-size:10px}
+.trigger-api{color:var(--amber);display:flex;align-items:center;gap:5px;font-size:10px}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── Topbar ── -->
+  <div class="topbar">
+    <div class="logo">HA<span>:ADMIN</span></div>
+    <div class="topbar-pills" id="summary-pills">
+      <div class="pill pill-cyan"><span class="blink">▮</span> CONNECTING...</div>
+    </div>
+    <div class="topbar-right">
+      <div class="conn-status">
+        <div class="conn-dot pend" id="conn-dot"></div>
+        <span id="conn-label">not connected</span>
+      </div>
+      <span id="ha-version" style="color:var(--text3)">—</span>
+      <span id="ws-status" style="font-size:10px;color:var(--text3)" title="WebSocket event stream">
+        <span id="ws-dot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);display:inline-block;margin-right:3px;vertical-align:middle"></span>WS
+      </span>
+      <span class="clock" id="clock">00:00:00</span>
+    </div>
+  </div>
+
+  <!-- ── Config bar ── -->
+  <div class="configbar">
+    <span class="cfg-label">API</span>
+    <input class="cfg-input" id="api-url" placeholder="http://localhost:3001" value="http://localhost:3001"/>
+    <span class="cfg-label">HA Token</span>
+    <input class="cfg-input cfg-input-sm" id="ha-token" type="password" placeholder="eyJhbGci..."/>
+    <button class="cfg-btn" onclick="connect()"><i class="ti ti-plug-connected"></i> Connect</button>
+    <button class="cfg-btn" onclick="loadAll()" id="refresh-all"><i class="ti ti-refresh"></i> Refresh</button>
+    <button class="cfg-btn danger" id="audit-btn" onclick="runAudit()"><i class="ti ti-shield-search"></i> Security Audit</button>
+  </div>
+
+  <!-- ── Nav ── -->
+  <div class="nav" id="nav">
+    <div class="nav-tab active" onclick="showTab('overview')"><i class="ti ti-layout-dashboard"></i> Overview</div>
+    <div class="nav-tab" onclick="showTab('audit')"><i class="ti ti-shield-lock"></i> Audit <span class="nav-badge" id="audit-badge" style="display:none">!</span></div>
+    <div class="nav-tab" onclick="showTab('users')"><i class="ti ti-users"></i> Users</div>
+    <div class="nav-tab" onclick="showTab('devices')"><i class="ti ti-cpu"></i> Devices</div>
+    <div class="nav-tab" onclick="showTab('connected')"><i class="ti ti-device-mobile"></i> Connected</div>
+    <div class="nav-tab" onclick="showTab('automations')"><i class="ti ti-robot"></i> Automations</div>
+    <div class="nav-tab" onclick="showTab('logs')"><i class="ti ti-file-text"></i> Logs</div>
+  </div>
+
+  <!-- ── Main content ── -->
+  <div class="main" id="main">
+
+    <!-- OVERVIEW -->
+    <div id="tab-overview">
+      <div id="alert-area"></div>
+      <div class="metrics-row" id="metrics-row">
+        <div class="metric info"><div class="metric-label">Entities</div><div class="metric-val blue" id="m-total">—</div><div class="metric-sub">total</div></div>
+        <div class="metric crit"><div class="metric-label">Unavailable</div><div class="metric-val red" id="m-unavail">—</div><div class="metric-sub">devices</div></div>
+        <div class="metric warn"><div class="metric-label">Low Battery</div><div class="metric-val amber" id="m-batt">—</div><div class="metric-sub">&lt;20%</div></div>
+        <div class="metric ok"><div class="metric-label">Automations</div><div class="metric-val green" id="m-autos">—</div><div class="metric-sub">loaded</div></div>
+        <div class="metric purple"><div class="metric-label">Domains</div><div class="metric-val purple" id="m-domains">—</div><div class="metric-sub">integration types</div></div>
+      </div>
+      <div class="grid-3">
+        <div class="pcard" style="grid-column:1/3">
+          <div class="phead">
+            <div class="ptitle"><i class="ti ti-activity"></i> Live Auth Log</div>
+            <button class="refresh-btn" onclick="loadLogs()"><i class="ti ti-refresh"></i> refresh</button>
+          </div>
+          <div class="pbody" id="overview-logs" style="max-height:220px"><div class="empty"><i class="ti ti-plug"></i>Connect to load logs</div></div>
+        </div>
+        <div class="pcard">
+          <div class="phead"><div class="ptitle"><i class="ti ti-shield"></i> Threat Surface</div></div>
+          <div class="pbody" id="threat-surface" style="padding:14px">
+            <div class="empty" style="padding:20px"><i class="ti ti-plug"></i>Connect first</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUDIT -->
+    <div id="tab-audit" style="display:none">
+      <div class="grid-2">
+        <div class="pcard">
+          <div class="phead"><div class="ptitle"><i class="ti ti-shield-search"></i> Security Score</div></div>
+          <div class="score-wrap" id="score-display">
+            <div class="score-num" style="color:var(--text3)">—</div>
+            <div class="score-label">Run audit to score</div>
+          </div>
+        </div>
+        <div class="pcard">
+          <div class="phead"><div class="ptitle"><i class="ti ti-info-circle"></i> System Info</div></div>
+          <div class="pbody" id="sysinfo-body" style="padding:14px;font-size:11px;color:var(--text2)">
+            <div class="empty"><i class="ti ti-plug"></i>Connect first</div>
+          </div>
+        </div>
+      </div>
+      <div class="pcard">
+        <div class="phead">
+          <div class="ptitle"><i class="ti ti-alert-triangle"></i> Findings</div>
+          <button class="cfg-btn" style="font-size:10px;padding:3px 10px" onclick="runAudit()"><i class="ti ti-refresh"></i> Re-run</button>
+        </div>
+        <div class="pbody" id="findings-body"><div class="empty"><i class="ti ti-shield-search"></i>Click "Security Audit" to run</div></div>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div id="tab-users" style="display:none">
+      <div class="pcard">
+        <div class="phead">
+          <div class="ptitle"><i class="ti ti-users"></i> People & Device Trackers</div>
+          <button class="refresh-btn" onclick="loadUsers()"><i class="ti ti-refresh"></i> refresh</button>
+        </div>
+        <div class="shead">name · entity · state · last seen · source · type</div>
+        <div class="pbody" id="users-body"><div class="empty"><i class="ti ti-plug"></i>Connect to load</div></div>
+      </div>
+      <div class="pcard">
+        <div class="phead">
+          <div class="ptitle"><i class="ti ti-key"></i> Auth Log Events</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <a class="refresh-btn" id="profile-link" href="#" target="_blank" style="text-decoration:none"><i class="ti ti-external-link"></i> Manage in HA</a>
+            <button class="refresh-btn" onclick="loadTokens()"><i class="ti ti-refresh"></i> refresh</button>
+          </div>
+        </div>
+        <div class="pbody" id="tokens-body"><div class="empty"><i class="ti ti-plug"></i>Connect to load</div></div>
+      </div>
+    </div>
+
+    <!-- DEVICES -->
+    <div id="tab-devices" style="display:none">
+      <!-- Summary metrics -->
+      <div class="metrics-row" id="dev-metrics" style="margin-bottom:0">
+        <div class="metric info"><div class="metric-label">Total Entities</div><div class="metric-val blue" id="dm-total">—</div></div>
+        <div class="metric crit"><div class="metric-label">Unavailable</div><div class="metric-val red" id="dm-unavail">—</div></div>
+        <div class="metric warn"><div class="metric-label">Low Battery</div><div class="metric-val amber" id="dm-batt">—</div></div>
+        <div class="metric ok"><div class="metric-label">Domains</div><div class="metric-val green" id="dm-domains">—</div></div>
+        <div class="metric purple"><div class="metric-label">Online</div><div class="metric-val purple" id="dm-online">—</div></div>
+      </div>
+
+      <div class="grid-2" style="align-items:start">
+        <!-- Entity list -->
+        <div class="pcard">
+          <div class="phead">
+            <div class="ptitle"><i class="ti ti-cpu"></i> Entity Registry</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select class="filter-select" id="domain-filter" onchange="filterDevices()">
+                <option value="">All domains</option>
+              </select>
+              <select class="filter-select" id="state-filter" onchange="filterDevices()">
+                <option value="">All states</option>
+                <option value="unavailable">Unavailable</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+              <input class="search-input" id="dev-search" placeholder="Search..." oninput="filterDevices()" style="width:120px"/>
+              <button class="refresh-btn" onclick="loadDevices()"><i class="ti ti-refresh"></i></button>
+            </div>
+          </div>
+          <div class="pbody" id="devices-body" style="max-height:calc(100vh - 340px);overflow-y:auto">
+            <div class="empty"><i class="ti ti-plug"></i>Connect to load</div>
+          </div>
+        </div>
+
+        <!-- Device detail panel -->
+        <div class="pcard" id="device-detail-panel">
+          <div class="phead">
+            <div class="ptitle"><i class="ti ti-info-circle"></i> Device Details</div>
+            <span style="font-size:10px;color:var(--text3)">click any device →</span>
+          </div>
+          <div class="pbody" id="device-detail-body" style="max-height:calc(100vh - 340px);overflow-y:auto">
+            <div class="empty" style="padding:40px"><i class="ti ti-hand-click"></i><br>Select a device to see full details</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECTED DEVICES -->
+    <div id="tab-connected" style="display:none">
+      <div class="grid-2" style="align-items:start">
+        <!-- Device list -->
+        <div class="pcard">
+          <div class="phead">
+            <div class="ptitle"><i class="ti ti-device-mobile"></i> Connected Devices</div>
+            <button class="refresh-btn" onclick="loadConnectedDevices()"><i class="ti ti-refresh"></i> refresh</button>
+          </div>
+          <div class="pbody" id="connected-list" style="max-height:calc(100vh - 300px);overflow-y:auto">
+            <div class="empty"><i class="ti ti-plug"></i>Connect to load</div>
+          </div>
+        </div>
+        <!-- Device detail + activity report -->
+        <div>
+          <div class="pcard" id="cdev-detail-card" style="margin-bottom:12px">
+            <div class="phead">
+              <div class="ptitle"><i class="ti ti-info-circle"></i> Device Profile</div>
+              <span style="font-size:10px;color:var(--text3)">click a device →</span>
+            </div>
+            <div id="cdev-detail-body" style="padding:14px">
+              <div class="empty" style="padding:30px"><i class="ti ti-hand-click"></i><br>Select a device</div>
+            </div>
+          </div>
+          <div class="pcard" id="cdev-report-card">
+            <div class="phead">
+              <div class="ptitle"><i class="ti ti-activity"></i> Activity Report</div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <select class="filter-select" id="report-hours" onchange="loadDeviceReport()">
+                  <option value="24">Last 24h</option>
+                  <option value="48">Last 48h</option>
+                  <option value="72">Last 72h</option>
+                  <option value="168">Last 7 days</option>
+                </select>
+                <button class="refresh-btn" onclick="loadDeviceReport()"><i class="ti ti-refresh"></i></button>
+              </div>
+            </div>
+            <div id="cdev-report-body" style="max-height:380px;overflow-y:auto">
+              <div class="empty"><i class="ti ti-hand-click"></i>Select a device first</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUTOMATIONS -->
+    <div id="tab-automations" style="display:none">
+      <div class="pcard">
+        <div class="phead">
+          <div class="ptitle"><i class="ti ti-robot"></i> Automation Health</div>
+          <button class="refresh-btn" onclick="loadAutomations()"><i class="ti ti-refresh"></i> refresh</button>
+        </div>
+        <div class="shead">name · last triggered · mode · state · actions</div>
+        <div class="pbody" id="autos-body"><div class="empty"><i class="ti ti-plug"></i>Connect to load</div></div>
+      </div>
+    </div>
+
+    <!-- LOGS -->
+    <div id="tab-logs" style="display:none">
+      <!-- Sub-nav -->
+      <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:2px;overflow:hidden;margin-bottom:12px;background:var(--bg1)">
+        <div class="log-subnav active" id="sn-system" onclick="switchLogTab('system')"><i class="ti ti-terminal-2"></i> System Log</div>
+        <div class="log-subnav" id="sn-auth" onclick="switchLogTab('auth')"><i class="ti ti-shield-lock"></i> Auth Log</div>
+        <div class="log-subnav" id="sn-devices" onclick="switchLogTab('devices')"><i class="ti ti-activity"></i> Device Actions</div>
+        <div class="log-subnav" id="sn-sessions" onclick="switchLogTab('sessions')"><i class="ti ti-device-mobile"></i> Live Sessions</div>
+        <div style="flex:1"></div>
+        <div style="display:flex;gap:8px;align-items:center;padding:0 10px">
+          <select class="filter-select" id="log-level" onchange="applyLogFilters()">
+            <option value="">All levels</option>
+            <option value="CRITICAL">CRITICAL</option>
+            <option value="WARNING">WARNING</option>
+            <option value="INFO">INFO</option>
+          </select>
+          <select class="filter-select" id="log-hours" onchange="loadCurrentLogTab()">
+            <option value="6">Last 6h</option>
+            <option value="24" selected>Last 24h</option>
+            <option value="48">Last 48h</option>
+            <option value="72">Last 72h</option>
+          </select>
+          <input class="search-input" id="log-search" placeholder="Search..." oninput="applyLogFilters()" style="width:150px"/>
+          <button class="refresh-btn" onclick="loadCurrentLogTab()"><i class="ti ti-refresh"></i> refresh</button>
+        </div>
+      </div>
+
+      <!-- System Log -->
+      <div id="log-panel-system" class="pcard">
+        <div class="phead">
+          <div class="ptitle"><i class="ti ti-terminal-2"></i> System Log <span id="sys-log-count" style="color:var(--text3);font-size:10px"></span></div>
+          <div style="display:flex;gap:6px">
+            <span class="tag tag-red" id="sys-crit-count"></span>
+            <span class="tag tag-amber" id="sys-warn-count"></span>
+          </div>
+        </div>
+        <div class="shead" style="grid-template-columns:70px 64px 130px 1fr">timestamp · level · component · message</div>
+        <div class="pbody" id="logs-body" style="max-height:calc(100vh - 320px)"><div class="empty"><i class="ti ti-plug"></i>Connect to load</div></div>
+      </div>
+
+      <!-- Auth Log -->
+      <div id="log-panel-auth" class="pcard" style="display:none">
+        <div class="phead">
+          <div class="ptitle"><i class="ti ti-shield-lock"></i> Auth & Access Log <span id="auth-log-count" style="color:var(--text3);font-size:10px"></span></div>
+        </div>
+        <div class="shead">timestamp · result · user · entity · message</div>
+        <div class="pbody" id="auth-logs-body" style="max-height:calc(100vh - 320px)"><div class="empty"><i class="ti ti-plug"></i>Connect to load</div></div>
+      </div>
+
+      <!-- Live Browser Sessions (Browser Mod) -->
+      <div id="log-panel-sessions" class="pcard" style="display:none">
+        <div class="phead">
+          <div class="ptitle"><i class="ti ti-device-mobile"></i> Live Browser Sessions <span style="font-size:9px;color:var(--text3)">(requires Browser Mod)</span></div>
+          <button class="refresh-btn" onclick="loadWSSessions()"><i class="ti ti-refresh"></i> refresh</button>
+        </div>
+        <div class="shead">device · platform · browser · user · path</div>
+        <div class="pbody" id="sessions-body" style="max-height:calc(100vh - 320px)">
+          <div class="empty"><i class="ti ti-plug"></i>Connect to load</div>
+        </div>
+      </div>
+
+      <!-- Device Actions Log -->
+      <div id="log-panel-devices" class="pcard" style="display:none">
+        <div class="phead">
+          <div class="ptitle"><i class="ti ti-activity"></i> Device Action Log <span id="dev-log-count" style="color:var(--text3);font-size:10px"></span></div>
+          <select class="filter-select" id="dev-domain-filter" onchange="applyLogFilters()">
+            <option value="">All domains</option>
+            <option value="light">Lights</option>
+            <option value="switch">Switches</option>
+            <option value="lock">Locks</option>
+            <option value="cover">Covers</option>
+            <option value="climate">Climate</option>
+            <option value="automation">Automations</option>
+            <option value="script">Scripts</option>
+            <option value="scene">Scenes</option>
+          </select>
+        </div>
+        <div class="shead">timestamp · device · action · triggered by · context</div>
+        <div class="pbody" id="device-logs-body" style="max-height:calc(100vh - 320px)"><div class="empty"><i class="ti ti-plug"></i>Connect to load</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Footer ── -->
+  <div class="footer">
+    <span id="footer-status">Not connected</span>
+    <span id="footer-url" style="color:var(--text3)"></span>
+    <div class="footer-actions">
+      <span id="last-refresh" style="color:var(--text3)"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot">
+      <button class="act-btn act-cyan" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let apiBase = 'http://localhost:3001';
+let haToken = '';
+let connected = false;
+let allStates = [];
+let allLogs = [];
+let allAutos = [];
+let allUsers = [];
+let allTokens = [];
+
+// ── Clock ──────────────────────────────────────────────────────────────────
+function tick() {
+  // GMT+3 Amman, Jordan time
+  const now = new Date(Date.now() + 3*3600000);
+  document.getElementById('clock').textContent = now.toISOString().slice(11,19) + ' +3';
+}
+tick(); setInterval(tick, 1000);
+
+// ── Tab nav ────────────────────────────────────────────────────────────────
+const TABS = ['overview','audit','users','devices','connected','automations','logs'];
+function showTab(t) {
+  TABS.forEach(id => {
+    document.getElementById('tab-'+id).style.display = id===t ? '' : 'none';
+  });
+  document.querySelectorAll('.nav-tab').forEach((el,i) => {
+    el.classList.toggle('active', TABS[i]===t);
+  });
+  if (connected) {
+    if (t==='users') { loadUsers(); loadTokens(); }
+    if (t==='devices') loadDevices();
+    if (t==='connected') loadConnectedDevices();
+    if (t==='automations') loadAutomations();
+    if (t==='logs') { switchLogTab(currentLogTab||'system'); }
+  }
+}
+
+// ── API helper ─────────────────────────────────────────────────────────────
+async function api(path, opts={}) {
+  const headers = { 'Content-Type':'application/json' };
+  if (haToken) headers['Authorization'] = 'Bearer '+haToken;
+  const r = await fetch(apiBase+path, { headers, ...opts });
+  if (!r.ok) {
+    const e = await r.json().catch(()=>({error:r.statusText}));
+    throw new Error(e.error || r.statusText);
+  }
+  return r.json();
+}
+
+// ── Connect ────────────────────────────────────────────────────────────────
+async function connect() {
+  apiBase = document.getElementById('api-url').value.replace(/\/$/,'');
+  haToken = document.getElementById('ha-token').value.trim();
+  setConnState('pend','connecting...');
+  try {
+    const data = await api('/api/connect');
+    if (data.connected) {
+      connected = true;
+      setConnState('ok','API running.');
+      document.getElementById('ha-version').textContent = 'HA';
+      document.getElementById('footer-url').textContent = apiBase;
+      showTab('overview');
+      loadAll().catch(e => console.warn('loadAll error:', e.message));
+    } else throw new Error(data.error||'failed');
+  } catch(e) {
+    connected = false;
+    setConnState('off','ERR: '+e.message.slice(0,40));
+  }
+}
+
+function setConnState(state, label) {
+  const dot = document.getElementById('conn-dot');
+  dot.className = 'conn-dot' + (state==='ok'?'' : state==='pend'?' pend':' off');
+  document.getElementById('conn-label').textContent = label;
+  document.getElementById('footer-status').textContent = label;
+}
+
+// ── Load all ───────────────────────────────────────────────────────────────
+async function loadAll() {
+  if (!connected) return;
+  document.getElementById('footer-status').textContent = 'loading data...';
+  const results = await Promise.allSettled([
+    loadSummary().catch(e => console.warn('summary:', e.message)),
+    loadLogs().catch(e => console.warn('logs:', e.message)),
+    loadSystemInfo().catch(e => console.warn('sysinfo:', e.message))
+  ]);
+  const failed = results.filter(r => r.status === 'rejected').length;
+  document.getElementById('last-refresh').textContent = 'refreshed ' + new Date().toTimeString().slice(0,8) + (failed ? ' (' + failed + ' errors)' : '');
+  document.getElementById('footer-status').textContent = 'connected';
+  checkWSStatus();
+}
+
+// ── Summary ────────────────────────────────────────────────────────────────
+async function loadSummary() {
+  try {
+    const d = await api('/api/devices/summary');
+    document.getElementById('m-total').textContent = d.total;
+    document.getElementById('m-unavail').textContent = d.unavailable;
+    document.getElementById('m-batt').textContent = d.lowBattery;
+    document.getElementById('m-domains').textContent = Object.keys(d.domains).length;
+
+    // pills
+    const pills = document.getElementById('summary-pills');
+    pills.innerHTML = '';
+    if (d.unavailable > 0) pills.innerHTML += `<div class="pill pill-red">${d.unavailable} unavailable</div>`;
+    if (d.lowBattery > 0) pills.innerHTML += `<div class="pill pill-amber">${d.lowBattery} low batt</div>`;
+    if (d.unavailable===0 && d.lowBattery===0) pills.innerHTML = `<div class="pill pill-green"><span class="blink">▮</span> ALL CLEAR</div>`;
+
+    // auto count
+    const autos = await api('/api/automations');
+    allAutos = autos;
+    document.getElementById('m-autos').textContent = autos.length;
+
+    renderThreatSurface(d);
+    renderAlertBanner(d);
+  } catch(e) { console.error('summary',e); }
+}
+
+function renderAlertBanner(d) {
+  const el = document.getElementById('alert-area');
+  if (d.unavailable > 3 || d.lowBattery > 2) {
+    el.innerHTML = `
+    <div class="alert-banner">
+      <i class="ti ti-alert-triangle"></i>
+      <div>
+        <div class="alert-title">ATTENTION — ${d.unavailable} device(s) unavailable, ${d.lowBattery} low battery</div>
+        <div class="alert-sub">Security coverage may be degraded · Check Z-Wave mesh and sensor power</div>
+      </div>
+      <div class="alert-actions">
+        <button class="act-btn act-red" onclick="showTab('devices')">View Devices</button>
+      </div>
+    </div>`;
+  } else el.innerHTML = '';
+}
+
+function renderThreatSurface(d) {
+  const el = document.getElementById('threat-surface');
+  const unavailPct = Math.round((1 - d.unavailable/Math.max(d.total,1))*100);
+  el.innerHTML = `
+    <div class="tbar-row">
+      <div class="tbar-label"><span style="color:var(--text2)">Device coverage</span><span style="color:${unavailPct>90?'var(--green)':unavailPct>70?'var(--amber)':'var(--red)'}">${unavailPct}%</span></div>
+      <div class="tbar-track"><div class="tbar-fill" style="width:${unavailPct}%;background:${unavailPct>90?'var(--green)':unavailPct>70?'var(--amber)':'var(--red)'}"></div></div>
+    </div>
+    <div class="tbar-row">
+      <div class="tbar-label"><span style="color:var(--text2)">Low battery sensors</span><span style="color:${d.lowBattery===0?'var(--green)':'var(--amber)'}">${d.lowBattery===0?'none':''+d.lowBattery+' affected'}</span></div>
+      <div class="tbar-track"><div class="tbar-fill" style="width:${Math.min(d.lowBattery*20,100)}%;background:var(--amber)"></div></div>
+    </div>
+    <div class="tbar-row">
+      <div class="tbar-label"><span style="color:var(--text2)">Integration domains</span><span style="color:var(--cyan)">${Object.keys(d.domains).length}</span></div>
+      <div class="tbar-track"><div class="tbar-fill" style="width:100%;background:var(--cyan)"></div></div>
+    </div>
+    <button class="cfg-btn" style="margin-top:12px;width:100%;font-size:10px" onclick="runAudit();showTab('audit')">
+      <i class="ti ti-shield-search"></i> Run Security Audit
+    </button>`;
+}
+
+// ── System info ────────────────────────────────────────────────────────────
+async function loadSystemInfo() {
+  try {
+    const d = await api('/api/system/info');
+    const cfg = d.config || {};
+    const el = document.getElementById('sysinfo-body');
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">
+        ${row('Version', cfg.version||'—')}
+        ${row('Location', cfg.location_name||'—')}
+        ${row('Unit system', cfg.unit_system?.length_unit ? cfg.unit_system.length_unit : '—')}
+        ${row('Time zone', cfg.time_zone||'—')}
+        ${row('Latitude', cfg.latitude||'—')}
+        ${row('Longitude', cfg.longitude||'—')}
+        ${row('State', cfg.state||'—')}
+        ${row('Config dir', cfg.config_dir||'—')}
+      </div>`;
+  } catch(e) {
+    document.getElementById('sysinfo-body').innerHTML = `<div class="empty"><i class="ti ti-alert-circle"></i>${e.message}</div>`;
+  }
+}
+function row(k,v){return `<div style="color:var(--text3);font-size:10px">${k}</div><div style="color:var(--cyan);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v}</div>`;}
+
+// ── Logs ───────────────────────────────────────────────────────────────────
+async function loadLogs() {
+  const overviewEl = document.getElementById('overview-logs');
+  const logsEl = document.getElementById('logs-body');
+  try {
+    if (overviewEl) overviewEl.innerHTML = '<div class="empty"><span class="spin"></span>Loading logs...</div>';
+    allLogs = await api('/api/logs?limit=300');
+    if (!Array.isArray(allLogs)) {
+      throw new Error('Unexpected log response format');
+    }
+    renderLogs(overviewEl, allLogs.slice(0,30), true);
+    renderLogsFull();
+  } catch(e) {
+    console.error('logs error:', e);
+    const errHtml = '<div class="empty"><i class="ti ti-alert-circle"></i>Log error: ' + e.message + '</div>';
+    if (overviewEl) overviewEl.innerHTML = errHtml;
+    if (logsEl) logsEl.innerHTML = errHtml;
+  }
+}
+
+function logLevelClass(lvl) {
+  if (lvl==='CRITICAL') return 'crit';
+  if (lvl==='WARNING') return 'warn';
+  if (lvl==='DEBUG') return 'ok';
+  return 'info';
+}
+
+function renderLogs(el, logs, mini=false) {
+  if (!el) return;
+  if (!logs || !logs.length) { el.innerHTML='<div class="empty"><i class="ti ti-check"></i>No log entries</div>'; return; }
+  el.innerHTML = logs.map(l=>{
+    const ts = (l.timestamp||'').slice(11,19) || (l.timestamp||'').slice(0,8) || '—';
+    const lvl = l.level||'INFO';
+    const msg = escHtml((l.message||'').slice(0,280));
+    const comp = escHtml((l.component||'core').slice(0,35));
+    return '<div class="log-row">'
+      + '<span class="log-ts">' + ts + '</span>'
+      + '<span class="log-lvl ' + logLevelClass(lvl) + '">' + lvl.slice(0,4) + '</span>'
+      + '<span class="log-msg">' + msg + '</span>'
+      + '<span class="log-comp">' + comp + '</span>'
+      + '</div>';
+  }).join('');
+}
+
+function renderLogsFull() {
+  filterLogDisplay();
+}
+
+function filterLogDisplay() {
+  const lvl = document.getElementById('log-level')?.value||'';
+  const q = (document.getElementById('log-search')?.value||'').toLowerCase();
+  const filtered = allLogs.filter(l=>
+    (!lvl||l.level===lvl) &&
+    (!q||l.message.toLowerCase().includes(q)||l.component.toLowerCase().includes(q))
+  );
+  renderLogs(document.getElementById('logs-body'), filtered.slice(0,200));
+}
+
+// ── Users ──────────────────────────────────────────────────────────────────
+async function loadUsers() {
+  const el = document.getElementById('users-body');
+  el.innerHTML = `<div class="empty"><span class="spin"></span>Loading...</div>`;
+  try {
+    allUsers = await api('/api/users');
+    renderUsers();
+  } catch(e) {
+    el.innerHTML = `<div class="empty"><i class="ti ti-alert-circle"></i>${e.message}</div>`;
+  }
+}
+
+const AVATARS = ['av-red','av-green','av-blue','av-amber','av-purple'];
+function renderUsers() {
+  const el = document.getElementById('users-body');
+  if (!allUsers.length) { el.innerHTML='<div class="empty"><i class="ti ti-users"></i>No people or trackers found</div>'; return; }
+  el.innerHTML = allUsers.map((u,i)=>{
+    const initials = (u.name||'?').slice(0,2).toUpperCase();
+    const av = AVATARS[i%AVATARS.length];
+    const isHome = u.state==='home';
+    const lastSeen = u.last_changed ? new Date(u.last_changed).toLocaleString() : '—';
+    const stateColor = isHome?'tag-green':u.state==='away'||u.state==='not_home'?'tag-amber':'tag-blue';
+    return `
+    <div class="user-row" style="grid-template-columns:32px 1fr 90px 130px 100px 80px" id="urow-${i}">
+      <div class="avatar ${av}">${initials}</div>
+      <div><div class="user-name">${escHtml(u.name)}</div><div class="user-sub">${escHtml(u.entity_id)}</div></div>
+      <div class="tbl-center"><span class="tag ${stateColor}">${escHtml(u.state)}</span></div>
+      <div class="tbl-center" style="font-size:10px;color:var(--text3)">${lastSeen}</div>
+      <div class="tbl-center" style="font-size:10px;color:var(--text2)">${escHtml(u.source)}</div>
+      <div class="tbl-center"><span class="tag ${u.type==='person'?'tag-purple':'tag-blue'}">${u.type}</span></div>
+    </div>`;
+  }).join('');
+}
+
+async function toggleUser(id, newState) {
+  showModal(
+    '<i class="ti ti-user-off"></i> Manage User in HA',
+    '<p style="margin-bottom:10px">User management (enable/disable accounts) requires the Home Assistant UI.</p>'
+    + '<p>Go to: <a href="' + apiBase.replace('3001','8123') + '/config/person" target="_blank" style="color:var(--cyan)">Settings → People</a></p>'
+    + '<p style="margin-top:8px;font-size:10px;color:var(--text3)">Note: The HA REST API does not expose user management — use the HA web interface or WebSocket API.</p>'
+  );
+}
+
+// ── Tokens ─────────────────────────────────────────────────────────────────
+async function loadTokens() {
+  const el = document.getElementById('tokens-body');
+  el.innerHTML = '<div class="empty"><span class="spin"></span>Loading auth events...</div>';
+  try {
+    const data = await api('/api/users/tokens');
+    const pl = document.getElementById('profile-link');
+    if (pl && data.manage_url) pl.href = data.manage_url;
+    if (!data.events || data.events.length === 0) {
+      el.innerHTML = '<div style="padding:16px 14px">'
+        + '<div style="color:var(--amber);font-size:11px;margin-bottom:12px"><i class="ti ti-info-circle"></i> '
+        + escHtml(data.note||'No auth log events found') + '</div>'
+        + '<a href="' + escHtml(data.manage_url||'#') + '" target="_blank" '
+        + 'style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--cyan);text-decoration:none;'
+        + 'border:1px solid rgba(0,212,255,.3);padding:6px 14px;border-radius:2px">'
+        + '<i class="ti ti-external-link"></i> Manage Tokens in Home Assistant Profile</a></div>';
+      return;
+    }
+    const rows = data.events.map(t => {
+      const ts = t.created_at ? new Date(t.created_at).toLocaleString() : '—';
+      return '<div class="log-row" style="grid-template-columns:140px 1fr">'
+        + '<span class="log-ts" style="font-size:10px;white-space:nowrap">' + ts + '</span>'
+        + '<span class="log-msg" style="font-size:10px;color:var(--text2)">' + escHtml(t.line) + '</span>'
+        + '</div>';
+    }).join('');
+    el.innerHTML = '<div style="padding:7px 14px;background:var(--amber-dim);border-bottom:1px solid rgba(255,179,0,.2);'
+      + 'font-size:10px;color:var(--amber)">'
+      + '<i class="ti ti-info-circle"></i> ' + escHtml(data.note)
+      + ' &mdash; <a href="' + escHtml(data.manage_url) + '" target="_blank" style="color:var(--cyan)">Open HA Profile to manage tokens</a>'
+      + '</div>' + rows;
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>' + e.message + '</div>';
+  }
+}
+function renderTokens() {}
+async function revokeToken(id) {}
+
+// ── Devices ────────────────────────────────────────────────────────────────
+async function loadDevices() {
+  const el = document.getElementById('devices-body');
+  el.innerHTML = `<div class="empty" style="grid-column:1/4"><span class="spin"></span>Loading...</div>`;
+  try {
+    allStates = await api('/api/devices/states');
+    const domains = [...new Set(allStates.map(s=>s.entity_id.split('.')[0]))].sort();
+    const df = document.getElementById('domain-filter');
+    const cur = df.value;
+    df.innerHTML = '<option value="">All domains</option>' +
+      domains.map(d=>`<option value="${d}"${d===cur?' selected':''}>${d}</option>`).join('');
+    filterDevices();
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="grid-column:1/4"><i class="ti ti-alert-circle"></i>${e.message}</div>`;
+  }
+}
+
+function getDeviceIcon(state) {
+  const dom = state.entity_id.split('.')[0];
+  const icons = {
+    light:'ti-bulb',binary_sensor:'ti-radar',sensor:'ti-chart-line',switch:'ti-toggle-right',
+    lock:'ti-lock',camera:'ti-camera',cover:'ti-door',climate:'ti-air-conditioning',
+    media_player:'ti-device-speaker',vacuum:'ti-robot',alarm_control_panel:'ti-shield',
+    input_boolean:'ti-toggle-right',automation:'ti-robot',script:'ti-terminal-2',
+    person:'ti-user',device_tracker:'ti-map-pin',weather:'ti-cloud',zone:'ti-map',
+    sun:'ti-sun',notify:'ti-bell',button:'ti-player-play'
+  };
+  return icons[dom]||'ti-cpu';
+}
+
+function filterDevices() {
+  const domain = document.getElementById('domain-filter')?.value||'';
+  const state = document.getElementById('state-filter')?.value||'';
+  const q = (document.getElementById('dev-search')?.value||'').toLowerCase();
+  const filtered = allStates.filter(s=>
+    (!domain||s.entity_id.startsWith(domain+'.')) &&
+    (!state||s.state===state) &&
+    (!q||s.entity_id.toLowerCase().includes(q)||(s.attributes?.friendly_name||'').toLowerCase().includes(q))
+  ).slice(0,120);
+
+  const el = document.getElementById('devices-body');
+  if (!filtered.length) { el.innerHTML='<div class="empty" style="grid-column:1/4"><i class="ti ti-search"></i>No matching entities</div>'; return; }
+  el.innerHTML = filtered.map(s=>{
+    const isUnavail = s.state==='unavailable'||s.state==='unknown';
+    const isOn = s.state==='on'||s.state==='locked'||s.state==='recording';
+    const batt = s.attributes?.battery_level??s.attributes?.battery;
+    const lowBatt = batt!==undefined&&Number(batt)<20;
+    const iconClass = isUnavail?'di-crit':lowBatt?'di-warn':isOn?'di-on':'di-off';
+    const icon = getDeviceIcon(s);
+    const name = s.attributes?.friendly_name||s.entity_id;
+    const stateColor = isUnavail?'var(--red)':lowBatt?'var(--amber)':isOn?'var(--green)':'var(--text3)';
+    return `
+    <div class="dev-item" onclick="showEntityModal(${escAttr(JSON.stringify(s))})">
+      <div class="dev-icon ${iconClass}"><i class="ti ${icon}"></i></div>
+      <div>
+        <div class="dev-name">${escHtml(name.slice(0,24))}</div>
+        <div class="dev-state" style="color:${stateColor}">${escHtml(s.state)}${batt!==undefined?' · batt '+batt+'%':''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showEntityModal(s) {
+  const attrs = Object.entries(s.attributes||{}).slice(0,12).map(([k,v])=>`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;border-bottom:1px solid var(--border);padding:4px 0"><span style="color:var(--text3);font-size:10px">${escHtml(k)}</span><span style="color:var(--cyan);font-size:10px;word-break:break-all">${escHtml(String(v).slice(0,60))}</span></div>`).join('');
+  showModal(`<i class="ti ti-cpu"></i> ${s.entity_id}`, `<div style="margin-bottom:8px"><span class="tag tag-blue">${s.state}</span></div>${attrs}`);
+}
+
+// ── Automations ────────────────────────────────────────────────────────────
+async function loadAutomations() {
+  const el = document.getElementById('autos-body');
+  el.innerHTML = `<div class="empty"><span class="spin"></span>Loading...</div>`;
+  try {
+    allAutos = await api('/api/automations');
+    renderAutomations();
+  } catch(e) {
+    el.innerHTML = `<div class="empty"><i class="ti ti-alert-circle"></i>${e.message}</div>`;
+  }
+}
+
+function renderAutomations() {
+  const el = document.getElementById('autos-body');
+  if (!allAutos.length) { el.innerHTML='<div class="empty"><i class="ti ti-robot"></i>No automations found</div>'; return; }
+  el.innerHTML = allAutos.map(a=>{
+    const triggered = a.last_triggered ? new Date(a.last_triggered).toLocaleString() : 'never';
+    const neverRun = !a.last_triggered;
+    const isOff = a.state==='off';
+    const stTag = neverRun?'tag-amber':isOff?'tag-red':'tag-green';
+    const stLabel = neverRun?'never run':isOff?'disabled':'ok';
+    return `
+    <div class="auto-row" style="background:${neverRun||isOff?'rgba(255,179,0,.03)':''}">
+      <div>
+        <div class="auto-name">${escHtml(a.friendly_name)}</div>
+        <div class="auto-sub">${escHtml(a.entity_id)} · mode: ${a.mode||'—'}</div>
+      </div>
+      <div style="font-size:10px;color:var(--text3)">${triggered}</div>
+      <div style="text-align:center"><span class="tag ${a.mode==='single'?'tag-blue':'tag-cyan'}">${a.mode||'—'}</span></div>
+      <div style="text-align:center"><span class="tag ${stTag}">${stLabel}</span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button class="row-btn ok" onclick="triggerAuto('${a.entity_id}')">run</button>
+        <button class="row-btn" onclick="toggleAuto('${a.entity_id}')">${isOff?'enable':'disable'}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function triggerAuto(id) {
+  try {
+    await api('/api/automations/'+encodeURIComponent(id)+'/trigger', {method:'POST'});
+    await loadAutomations();
+  } catch(e) { showModal('Error',`<p>${e.message}</p>`); }
+}
+async function toggleAuto(id) {
+  try {
+    await api('/api/automations/'+encodeURIComponent(id)+'/toggle', {method:'POST'});
+    await loadAutomations();
+  } catch(e) { showModal('Error',`<p>${e.message}</p>`); }
+}
+
+// ── Audit ──────────────────────────────────────────────────────────────────
+async function runAudit() {
+  const badge = document.getElementById('audit-badge');
+  const fb = document.getElementById('findings-body');
+  const sd = document.getElementById('score-display');
+  fb.innerHTML = `<div class="empty"><span class="spin"></span>Running audit against live HA data...</div>`;
+  sd.innerHTML = `<div class="score-num" style="color:var(--text3)">—</div><div class="score-label">scanning...</div>`;
+  try {
+    const d = await api('/api/audit');
+    const crits = d.findings.filter(f=>f.severity==='CRITICAL').length;
+    const warns = d.findings.filter(f=>f.severity==='WARNING').length;
+
+    // score
+    const scoreColor = d.score>=80?'var(--green)':d.score>=50?'var(--amber)':'var(--red)';
+    sd.innerHTML = `
+      <div class="score-num" style="color:${scoreColor}">${d.score}</div>
+      <div class="score-label">security score</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:8px">${crits} critical · ${warns} warnings · HA ${d.haVersion}</div>`;
+
+    // badge
+    if (crits>0) { badge.textContent=crits; badge.style.display=''; }
+    else badge.style.display='none';
+
+    // findings
+    if (!d.findings.length) {
+      fb.innerHTML = `<div class="empty"><i class="ti ti-shield-check"></i>No issues found — all clear</div>`;
+    } else {
+      fb.innerHTML = d.findings.map(f=>`
+        <div class="finding">
+          <div><span class="finding-sev ${f.severity==='CRITICAL'?'crit':f.severity==='WARNING'?'warn':'info'}">${f.severity}</span></div>
+          <div>
+            <div class="finding-title">[${f.category}] ${escHtml(f.title)}</div>
+            <div class="finding-detail">${escHtml(f.detail)}</div>
+            <div class="finding-action"><i class="ti ti-arrow-right" style="font-size:10px"></i> ${escHtml(f.action)}</div>
+          </div>
+        </div>`).join('');
+    }
+  } catch(e) {
+    fb.innerHTML = `<div class="empty"><i class="ti ti-alert-circle"></i>${e.message}</div>`;
+  }
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────
+function showModal(title, body) {
+  document.getElementById('modal-title').innerHTML = title;
+  document.getElementById('modal-body').innerHTML = body;
+  document.getElementById('modal').style.display = 'flex';
+}
+function closeModal() {
+  document.getElementById('modal').style.display = 'none';
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return "'"+String(s).replace(/'/g,"\\'")+"'";
+}
+
+// ── Init: ensure overview visible on load
+document.getElementById('tab-overview').style.display = '';
+
+// ══════════════════════════════════════════════════════════════
+//  LOGS — 3-tab system: System / Auth / Device Actions
+// ══════════════════════════════════════════════════════════════
+let currentLogTab = 'system';
+let rawSystemLogs = [], rawAuthLogs = [], rawDeviceLogs = [];
+
+function switchLogTab(tab) {
+  currentLogTab = tab;
+  ['system','auth','devices','sessions'].forEach(t => {
+    document.getElementById('log-panel-'+t).style.display = t===tab ? '' : 'none';
+    const sn = document.getElementById('sn-'+t);
+    if (sn) sn.classList.toggle('active', t===tab);
+  });
+  loadCurrentLogTab();
+}
+
+function loadCurrentLogTab() {
+  if (currentLogTab==='system') loadSystemLogs();
+  else if (currentLogTab==='auth') loadAuthLogs();
+  else if (currentLogTab==='sessions') loadWSSessions();
+  else loadDeviceLogs();
+}
+
+function getHours() { return document.getElementById('log-hours')?.value || '24'; }
+function getLevelFilter() { return document.getElementById('log-level')?.value || ''; }
+function getSearchFilter() { return (document.getElementById('log-search')?.value||'').toLowerCase(); }
+function getDomainFilter() { return document.getElementById('dev-domain-filter')?.value || ''; }
+
+// ── System Log ─────────────────────────────────────────────────
+async function loadSystemLogs() {
+  const el = document.getElementById('logs-body');
+  if (el) el.innerHTML = '<div class="empty"><span class="spin"></span>Loading system log...</div>';
+  try {
+    const h = getHours();
+    rawSystemLogs = await api('/api/logs/system?hours='+h+'&limit=400');
+    renderSystemLogs();
+    updateOverviewLogs();
+  } catch(e) {
+    if (el) el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>'+e.message+'</div>';
+  }
+}
+
+function renderSystemLogs() {
+  const el = document.getElementById('logs-body');
+  if (!el) return;
+  const lvl = getLevelFilter();
+  const q = getSearchFilter();
+  let data = rawSystemLogs.filter(l =>
+    (!lvl || l.level===lvl) &&
+    (!q || (l.message||'').toLowerCase().includes(q) || (l.component||'').toLowerCase().includes(q))
+  );
+  const crits = data.filter(l=>l.level==='CRITICAL').length;
+  const warns = data.filter(l=>l.level==='WARNING').length;
+  const cc = document.getElementById('sys-crit-count');
+  const wc = document.getElementById('sys-warn-count');
+  const sc = document.getElementById('sys-log-count');
+  if (cc) cc.textContent = crits > 0 ? crits+' critical' : '';
+  if (wc) wc.textContent = warns > 0 ? warns+' warnings' : '';
+  if (sc) sc.textContent = '('+data.length+' entries)';
+  if (!data.length) { el.innerHTML='<div class="empty"><i class="ti ti-check"></i>No entries match filter</div>'; return; }
+  el.innerHTML = data.slice(0,300).map(l => {
+    const lvlClass = l.level==='CRITICAL'?'crit':l.level==='WARNING'?'warn':l.level==='DEBUG'?'ok':'info';
+    const ts = (l.timestamp||'').slice(0,19);
+    const comp = escHtml((l.component||'core').slice(0,35));
+    const msg = escHtml((l.message||'').slice(0,280));
+    const userBadge = l.user_name ? '<span style="color:var(--cyan);font-size:9px;margin-left:6px"><i class="ti ti-user" style="font-size:9px"></i> '+escHtml(l.user_name)+'</span>' : '';
+    return '<div class="log-row" style="grid-template-columns:120px 66px 130px 1fr">'
+      +'<span class="log-ts">'+ts+'</span>'
+      +'<span class="log-lvl '+lvlClass+'">'+l.level.slice(0,4)+'</span>'
+      +'<span class="log-comp" style="text-align:left;color:var(--text2)">'+comp+'</span>'
+      +'<span class="log-msg">'+msg+userBadge+'</span>'
+      +'</div>';
+  }).join('');
+}
+
+// ── Auth Log ───────────────────────────────────────────────────
+async function loadAuthLogs() {
+  const el = document.getElementById('auth-logs-body');
+  if (el) el.innerHTML = '<div class="empty"><span class="spin"></span>Loading auth log...</div>';
+  try {
+    rawAuthLogs = await api('/api/logs/auth?hours='+getHours()+'&limit=200');
+    renderAuthLogs();
+  } catch(e) {
+    if (el) el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>'+e.message+'</div>';
+  }
+}
+
+function renderAuthLogs() {
+  const el = document.getElementById('auth-logs-body');
+  if (!el) return;
+  const q = getSearchFilter();
+  const data = rawAuthLogs.filter(l =>
+    (!q || (l.message||'').toLowerCase().includes(q) || (l.user_name||'').toLowerCase().includes(q))
+  );
+  const cnt = document.getElementById('auth-log-count');
+  if (cnt) cnt.textContent = '('+data.length+' events)';
+  if (!data.length) {
+    el.innerHTML = '<div style="padding:16px 14px">'
+      +'<div style="color:var(--text3);font-size:11px;margin-bottom:10px">No auth events found in logbook for this period.</div>'
+      +'<div style="color:var(--text3);font-size:10px">Note: HA only logs auth events in the logbook if the history/recorder component is enabled and capturing auth domain events.</div>'
+      +'</div>';
+    return;
+  }
+  el.innerHTML = data.slice(0,200).map(l => {
+    const ts = (l.timestamp||'').slice(0,19);
+    const resultClass = l.result==='SUCCESS'?'auth-success':l.result==='FAILED'?'auth-failed':l.result==='LOGOUT'?'auth-logout':'auth-info';
+    const resultTag = l.result==='SUCCESS'
+      ? '<span class="tag tag-green">SUCCESS</span>'
+      : l.result==='FAILED'
+        ? '<span class="tag tag-red">FAILED</span>'
+        : l.result==='LOGOUT'
+          ? '<span class="tag tag-amber">LOGOUT</span>'
+          : '<span class="tag tag-blue">'+escHtml(l.result||'INFO')+'</span>';
+    const userName = escHtml(l.user_name||l.user_id||'—');
+    const msg = escHtml((l.message||'').slice(0,200));
+    return '<div class="auth-row">'
+      +'<span style="color:var(--text3);font-size:10px">'+ts+'</span>'
+      +resultTag
+      +'<span style="display:flex;align-items:center;gap:5px"><i class="ti ti-user" style="font-size:11px;color:var(--cyan)"></i><span style="color:var(--text)">'+userName+'</span></span>'
+      +'<span style="color:var(--text2)">'+msg+'</span>'
+      +'</div>';
+  }).join('');
+}
+
+// ── Device Action Log ──────────────────────────────────────────
+async function loadDeviceLogs() {
+  const el = document.getElementById('device-logs-body');
+  if (el) el.innerHTML = '<div class="empty"><span class="spin"></span>Loading device actions...</div>';
+  try {
+    rawDeviceLogs = await api('/api/logs/devices?hours='+getHours()+'&limit=400');
+    renderDeviceLogs();
+  } catch(e) {
+    if (el) el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>'+e.message+'</div>';
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  DEVICE ACTION LOG — expandable rows with full who/when/how
+// ══════════════════════════════════════════════════════════════
+
+function detectPlatform(entry) {
+  // HA logbook context does not expose user-agent directly via REST API.
+  // We derive platform from available context fields:
+  // - context.parent_id present often indicates mobile companion app
+  // - source field sometimes contains app info
+  // - user_agent is only in WebSocket stream, not REST
+  const src = (entry.source || '').toLowerCase();
+  const ctxType = (entry.context_event_type || '').toLowerCase();
+  const userId = entry.user_id || (entry.context && entry.context.user_id);
+
+  if (!userId && !entry.user_name) return { label:'Automation / System', icon:'ti-robot', cls:'platform-auto' };
+  if (/android|ios|mobile|companion/i.test(src)) return { label:'Mobile App', icon:'ti-device-mobile', cls:'platform-mobile' };
+  if (/api|token|curl|http/i.test(src)) return { label:'API / Token', icon:'ti-api', cls:'platform-api' };
+  if (userId || entry.user_name) return { label:'Manual (Browser/App)', icon:'ti-device-desktop', cls:'platform-desktop' };
+  return { label:'Unknown', icon:'ti-question-mark', cls:'platform-api' };
+}
+
+function renderDeviceLogs() {
+  const el = document.getElementById('device-logs-body');
+  if (!el) return;
+  const q   = getSearchFilter();
+  const dom = getDomainFilter();
+  const data = rawDeviceLogs.filter(l =>
+    (!dom || l.domain === dom) &&
+    (!q || (l.message     ||'').toLowerCase().includes(q)
+        || (l.entity_name ||'').toLowerCase().includes(q)
+        || (l.user_name   ||'').toLowerCase().includes(q)
+        || (l.trigger_label||'').toLowerCase().includes(q))
+  );
+  const cnt = document.getElementById('dev-log-count');
+  if (cnt) cnt.textContent = '(' + data.length + ' actions)';
+  if (!data.length) {
+    el.innerHTML = '<div style="padding:16px 14px;color:var(--text3);font-size:11px">No device actions found. Logbook must be enabled.</div>';
+    return;
+  }
+
+  el.innerHTML = data.slice(0, 400).map((l, idx) => {
+    const ts          = (l.timestamp || '').slice(0, 19);
+    const actionClass = 'action-' + (l.action || 'EVENT');
+    const name        = escHtml((l.entity_name || l.entity_id || l.domain || '—').slice(0, 32));
+    const eid         = escHtml((l.entity_id   || '').slice(0, 40));
+    const expId       = 'dact-exp-' + idx;
+    const rowId       = 'dact-row-' + idx;
+
+    // ── WHO triggered ──────────────────────────────────────────
+    const tt = l.trigger_type || 'SYSTEM';
+    let whoBadge, whoIcon, whoClass;
+
+    if (tt === 'MANUAL') {
+      // Human user via app or browser
+      const uname   = escHtml(l.user_name || l.trigger_label || 'User');
+      const dname   = l.device_name ? ' <span style="color:var(--cyan);font-size:9px;opacity:.8">· ' + escHtml(l.device_name) + '</span>' : '';
+      const uIcon   = l.device_name && /iphone|ipad/i.test(l.device_name) ? 'ti-brand-apple'
+                    : l.device_name && /android|samsung/i.test(l.device_name) ? 'ti-brand-android'
+                    : 'ti-user';
+      whoIcon  = uIcon;
+      whoClass = 'trigger-user';
+      whoBadge = '<span class="' + whoClass + '"><i class="ti ' + whoIcon + '" style="font-size:12px"></i>' + uname + dname + '</span>';
+    } else if (tt === 'AUTOMATION') {
+      const aname = escHtml((l.automation_name || l.trigger_label || 'Automation').slice(0, 28));
+      whoIcon  = 'ti-robot';
+      whoClass = 'trigger-auto';
+      whoBadge = '<span class="' + whoClass + '"><i class="ti ' + whoIcon + '" style="font-size:12px"></i>' + aname + '</span>';
+    } else if (tt === 'WEBHOOK') {
+      whoIcon  = 'ti-webhook';
+      whoClass = 'trigger-api';
+      whoBadge = '<span class="' + whoClass + '"><i class="ti ' + whoIcon + '" style="font-size:12px"></i>Webhook</span>';
+    } else if (tt === 'PHYSICAL') {
+      whoIcon  = 'ti-hand-finger';
+      whoClass = 'trigger-api';
+      whoBadge = '<span class="' + whoClass + '" style="color:var(--green)"><i class="ti ' + whoIcon + '" style="font-size:12px"></i>' + escHtml(l.trigger_label || 'Wall Switch') + '</span>';
+    } else if (tt === 'CASCADE') {
+      const cname = escHtml((l.context_entity_name || l.trigger_label || 'Entity').slice(0, 24));
+      whoIcon  = 'ti-git-merge';
+      whoClass = 'trigger-api';
+      whoBadge = '<span class="' + whoClass + '" style="color:var(--text2)"><i class="ti ' + whoIcon + '" style="font-size:12px"></i>' + cname + '</span>';
+    } else {
+      whoIcon  = 'ti-settings';
+      whoClass = 'trigger-api';
+      whoBadge = '<span class="' + whoClass + '"><i class="ti ' + whoIcon + '" style="font-size:12px"></i>' + escHtml(l.trigger_label || 'System') + '</span>';
+    }
+
+    // ── Platform badge ──────────────────────────────────────────
+    let platformBadge = '';
+    if (l.platform === 'mobile' || (l.ws_platform && /mobile|iphone|android/i.test(l.ws_platform))) {
+      const realPlatform = l.ws_platform || l.device_name || 'Mobile';
+      const icon = /iphone|ios|apple/i.test(realPlatform) ? 'ti-brand-apple'
+                 : /android|samsung/i.test(realPlatform) ? 'ti-brand-android' : 'ti-device-mobile';
+      // Only show browser if it's actually known (not 'Unknown')
+      const bname = (l.ws_browser && l.ws_browser !== 'Unknown') ? ' · ' + escHtml(l.ws_browser) : '';
+      platformBadge = '<span class="platform-badge platform-mobile"><i class="ti '+icon+'" style="font-size:11px"></i>' + escHtml(realPlatform) + bname + '</span>';
+    } else if (l.platform === 'desktop' || (l.ws_platform && /desktop|browser|windows|mac|linux/i.test(l.ws_platform))) {
+      const realPlatform = l.ws_platform || 'Desktop Browser';
+      const browser = l.ws_browser ? ' · ' + escHtml(l.ws_browser) : '';
+      platformBadge = '<span class="platform-badge platform-desktop"><i class="ti ti-device-desktop" style="font-size:11px"></i>' + escHtml(realPlatform) + browser + '</span>';
+    } else if (l.platform === 'app') {
+      const appDev  = escHtml(l.ws_platform || l.device_name || 'HA App');
+      const browser = l.ws_browser ? ' · ' + escHtml(l.ws_browser) : '';
+      const appIcon = /iphone|ios|apple/i.test(appDev) ? 'ti-brand-apple'
+                    : /android|samsung/i.test(appDev)   ? 'ti-brand-android' : 'ti-layout-navbar';
+      platformBadge = '<span class="platform-badge platform-desktop"><i class="ti ' + appIcon + '" style="font-size:11px"></i>' + appDev + browser + '</span>';
+    } else if (l.platform === 'schedule') {
+      platformBadge = '<span class="platform-badge platform-auto"><i class="ti ti-clock" style="font-size:11px"></i>Schedule</span>';
+    } else if (l.platform === 'webhook') {
+      platformBadge = '<span class="platform-badge platform-api"><i class="ti ti-webhook" style="font-size:11px"></i>Webhook</span>';
+    } else if (l.platform === 'automation') {
+      platformBadge = '<span class="platform-badge platform-auto"><i class="ti ti-robot" style="font-size:11px"></i>Automation</span>';
+    } else if (l.platform === 'physical') {
+      platformBadge = '<span class="platform-badge" style="background:rgba(0,230,118,.06);color:var(--green);border-color:rgba(0,230,118,.2)"><i class="ti ti-hand-finger" style="font-size:11px"></i>Wall Switch</span>';
+    }
+
+    // ── Expand detail section ───────────────────────────────────
+    const userSection = tt === 'MANUAL'
+      ? dField('User Name',    escHtml(l.user_name    || '—'), l.user_name ? 'user' : '')
+      + dField('User ID',      escHtml(l.user_id      || '—'), '')
+      + dField('Device', escHtml(l.device_name || 'HA App'), 'user')
+      + dField('App Version', escHtml(l.device_model || '—'), '')
+      + (l.ws_platform
+          ? dField('Client (Live)', escHtml(l.ws_platform) + (l.ws_browser ? ' · ' + escHtml(l.ws_browser) : ''), 'user')
+          : l.device_name
+            ? dField('Device (resolved)', escHtml(l.device_name), 'user')
+            : dField('Client Note', 'Private/incognito mode or Browser Mod session expired', ''))
+      + (l.ws_browser ? dField('Browser', escHtml(l.ws_browser), '') : '')
+      + (l.ws_session_id   ? dField('Browser Mod ID',   escHtml(l.ws_session_id), '') : '')
+      + (l.ws_session_hash ? dField('Session Hash', escHtml(l.ws_session_hash), '') : '')
+      + (l.ws_user_agent   ? dField('User Agent', escHtml((l.ws_user_agent||'').slice(0,250)), '', false, true) : '')
+      + dField('Platform',     platformBadge, '', true)
+      : tt === 'AUTOMATION'
+        ? dField('Automation',   escHtml(l.automation_name   || '—'), 'auto')
+        + dField('Trigger',      escHtml(l.automation_msg    || l.source || '—'), '')
+        + dField('Auto Entity',  escHtml(l.automation_entity || '—'), '')
+        + dField('Platform',     platformBadge, '', true)
+        : tt === 'CASCADE'
+          ? dField('Triggered By Entity', escHtml(l.context_entity_name || '—'), '')
+          + dField('Entity ID',           escHtml(l.context_entity_id   || '—'), '')
+          + dField('Platform',            platformBadge, '', true)
+          : tt === 'PHYSICAL'
+            ? dField('Trigger', 'Wall Switch / Physical Button', 'user')
+            + dField('Note', 'No user context — direct hardware action', '')
+            + dField('Platform', platformBadge, '', true)
+            : dField('Trigger Type', escHtml(l.trigger_label || tt), '')
+            + dField('Source', escHtml(l.source || '—'), '')
+            + dField('Platform', platformBadge, '', true);
+
+    return '<div class="dact-row" id="' + rowId + '">'
+      + '<div class="dact-main" onclick="toggleDactExpand(\'' + expId + '\',\'' + rowId + '\')">'
+        + '<span style="color:var(--text3);font-size:10px;white-space:nowrap">' + escHtml(ts) + '</span>'
+        + '<span class="action-pill ' + actionClass + '">' + escHtml(l.action || 'EVT') + '</span>'
+        + '<div style="overflow:hidden">'
+          + '<div style="font-size:11px;font-family:var(--font-ui);font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + name + '</div>'
+          + '<div style="font-size:9px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + eid + '</div>'
+        + '</div>'
+        + whoBadge
+        + platformBadge
+        + '<span style="color:var(--text3);font-size:12px">›</span>'
+      + '</div>'
+      // Expand section
+      + '<div class="dact-expand" id="' + expId + '">'
+        + dField('Date & Time',  escHtml(ts), '')
+        + dField('Entity',       escHtml(l.entity_name || '—'), '')
+        + dField('Entity ID',    escHtml(l.entity_id   || '—'), '')
+        + dField('Domain',       escHtml(l.domain      || '—'), '')
+        + dField('Action',       '<span class="action-pill ' + actionClass + '">' + escHtml(l.action || '—') + '</span>', '', true)
+        + dField('State',        escHtml(l.state       || '—'), l.state === 'on' ? 'on' : l.state === 'off' ? 'off' : '')
+        + userSection
+        + dField('Full Message', escHtml(l.message     || '—'), '', false, true)
+      + '</div>'
+    + '</div>';
+  }).join('');
+}
+
+function dField(label, value, valClass, rawHtml, fullWidth) {
+  const cls = valClass ? ' class="dact-field-val ' + valClass + '"' : ' class="dact-field-val"';
+  const span = rawHtml ? '<div' + cls + '>' + value + '</div>' : '<div' + cls + '>' + value + '</div>';
+  const gridStyle = fullWidth ? ' style="grid-column:1/-1"' : '';
+  return '<div class="dact-field"' + gridStyle + '>'
+    + '<div class="dact-field-key">' + label + '</div>'
+    + span
+    + '</div>';
+}
+
+
+
+function toggleDactExpand(expandId, rowId) {
+  const exp = document.getElementById(expandId);
+  const row = document.getElementById(rowId);
+  if (!exp) return;
+  const open = exp.classList.contains('visible');
+  // Close all others
+  document.querySelectorAll('.dact-expand').forEach(e => e.classList.remove('visible'));
+  document.querySelectorAll('.dact-row').forEach(r => r.classList.remove('open'));
+  if (!open) { exp.classList.add('visible'); row.classList.add('open'); }
+}
+
+// ── Expandable system log rows ─────────────────────────────────
+function renderSystemLogs() {
+  const el = document.getElementById('logs-body');
+  if (!el) return;
+  const lvl = getLevelFilter();
+  const q   = getSearchFilter();
+  let data  = rawSystemLogs.filter(l =>
+    (!lvl || l.level === lvl) &&
+    (!q || (l.message||'').toLowerCase().includes(q) || (l.component||'').toLowerCase().includes(q))
+  );
+  const crits = data.filter(l => l.level==='CRITICAL').length;
+  const warns = data.filter(l => l.level==='WARNING').length;
+  const cc = document.getElementById('sys-crit-count');
+  const wc = document.getElementById('sys-warn-count');
+  const sc = document.getElementById('sys-log-count');
+  if (cc) cc.textContent = crits > 0 ? crits+' critical' : '';
+  if (wc) wc.textContent = warns > 0 ? warns+' warnings' : '';
+  if (sc) sc.textContent = '('+data.length+' entries)';
+  if (!data.length) { el.innerHTML='<div class="empty"><i class="ti ti-check"></i>No entries</div>'; return; }
+
+  el.innerHTML = data.slice(0,300).map((l, idx) => {
+    const lvlClass = l.level==='CRITICAL'?'crit':l.level==='WARNING'?'warn':'info';
+    const ts   = (l.timestamp||'').slice(0,19);
+    const comp = escHtml((l.component||'core').slice(0,30));
+    const msg  = escHtml((l.message||'').slice(0,240));
+    const expId = 'sysexp-'+idx;
+    const rowId = 'sysrow-'+idx;
+    const userBadge = l.user_name
+      ? ' <span style="color:var(--cyan);font-size:9px"><i class="ti ti-user" style="font-size:9px"></i> '+escHtml(l.user_name)+'</span>' : '';
+    return '<div id="'+rowId+'" class="log-row log-expand-row" style="grid-template-columns:118px 56px 120px 1fr 14px" onclick="toggleSysExpand(\''+expId+'\',\''+rowId+'\')">'
+      +'<span class="log-ts">'+ts+'</span>'
+      +'<span class="log-lvl '+lvlClass+'">'+l.level.slice(0,4)+'</span>'
+      +'<span class="log-comp" style="text-align:left;color:var(--text2)">'+comp+'</span>'
+      +'<span class="log-msg">'+msg+userBadge+'</span>'
+      +'<span style="color:var(--text3);font-size:10px">›</span>'
+      +'</div>'
+      +'<div class="log-detail-expand" id="'+expId+'">'
+        +'<div class="log-detail-grid">'
+          +'<span class="log-dk">Timestamp</span><span class="log-dv">'+escHtml(ts)+'</span>'
+          +'<span class="log-dk">Level</span><span class="log-dv '+(l.level==='CRITICAL'?'red':l.level==='WARNING'?'amber':'')+'">'+escHtml(l.level)+'</span>'
+          +'<span class="log-dk">Component</span><span class="log-dv">'+escHtml(l.component||'—')+'</span>'
+          +'<span class="log-dk">Source</span><span class="log-dv">'+escHtml(l.source||'—')+'</span>'
+          +(l.entity_id ? '<span class="log-dk">Entity</span><span class="log-dv">'+escHtml(l.entity_id)+'</span>' : '')
+          +(l.user_id ? '<span class="log-dk">User ID</span><span class="log-dv green">'+escHtml(l.user_id)+'</span>' : '')
+          +(l.user_name ? '<span class="log-dk">User Name</span><span class="log-dv green">'+escHtml(l.user_name)+'</span>' : '')
+          +'<span class="log-dk" style="grid-column:1/-1;margin-top:4px;border-top:1px solid rgba(30,45,61,.5);padding-top:4px">Full Message</span>'
+          +'<span class="log-dv" style="grid-column:1/-1;color:var(--text2);white-space:normal;word-break:break-all">'+escHtml(l.message||'—')+'</span>'
+        +'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function toggleSysExpand(expId, rowId) {
+  const exp = document.getElementById(expId);
+  const row = document.getElementById(rowId);
+  if (!exp) return;
+  const open = exp.classList.contains('visible');
+  document.querySelectorAll('.log-detail-expand').forEach(e => e.classList.remove('visible'));
+  document.querySelectorAll('.log-expand-row').forEach(r => r.classList.remove('open'));
+  if (!open) { exp.classList.add('visible'); row.classList.add('open'); }
+}
+// ── Apply filters (called on filter change) ──
+function applyLogFilters() {
+  if (currentLogTab==='system') renderSystemLogs();
+  else if (currentLogTab==='auth') renderAuthLogs();
+  else renderDeviceLogs();
+}
+
+// ── Update overview auth log panel ────────────────────────────
+function updateOverviewLogs() {
+  const el = document.getElementById('overview-logs');
+  if (!el) return;
+  const recent = rawSystemLogs.slice(0,25);
+  if (!recent.length) { el.innerHTML='<div class="empty"><i class="ti ti-check"></i>No recent events</div>'; return; }
+  el.innerHTML = recent.map(l => {
+    const lvlClass = l.level==='CRITICAL'?'crit':l.level==='WARNING'?'warn':'info';
+    return '<div class="log-row" style="grid-template-columns:80px 56px 1fr 100px">'
+      +'<span class="log-ts">'+(l.timestamp||'').slice(11,19)+'</span>'
+      +'<span class="log-lvl '+lvlClass+'">'+l.level.slice(0,4)+'</span>'
+      +'<span class="log-msg">'+escHtml((l.message||'').slice(0,200))+'</span>'
+      +'<span class="log-comp">'+escHtml((l.component||'').slice(0,20))+'</span>'
+      +'</div>';
+  }).join('');
+}
+
+// ── Shim: old loadLogs() used in loadAll and refresh ──────────
+async function loadLogs() { await loadSystemLogs(); }
+function filterLogDisplay() { renderSystemLogs(); }
+
+
+// ══════════════════════════════════════════════════════════════
+//  DEVICES — full detail panel + list view
+// ══════════════════════════════════════════════════════════════
+
+const DOMAIN_ICONS = {
+  light:'ti-bulb', switch:'ti-toggle-right', binary_sensor:'ti-radar',
+  sensor:'ti-chart-line', lock:'ti-lock', camera:'ti-camera', cover:'ti-door',
+  climate:'ti-air-conditioning', media_player:'ti-device-speaker', vacuum:'ti-robot-off',
+  alarm_control_panel:'ti-shield', input_boolean:'ti-toggle-right',
+  automation:'ti-robot', script:'ti-terminal-2', person:'ti-user',
+  device_tracker:'ti-map-pin', weather:'ti-cloud', zone:'ti-map',
+  sun:'ti-sun', notify:'ti-bell', button:'ti-player-play',
+  fan:'ti-wind', input_number:'ti-123', input_text:'ti-forms',
+  input_select:'ti-list', timer:'ti-clock', counter:'ti-hash',
+  number:'ti-123', select:'ti-list', text:'ti-forms',
+  update:'ti-refresh', siren:'ti-volume', remote:'ti-device-remote',
+  humidifier:'ti-droplet', water_heater:'ti-flame'
+};
+
+function getDomainIcon(entityId) {
+  const dom = (entityId||'').split('.')[0];
+  return DOMAIN_ICONS[dom] || 'ti-cpu';
+}
+
+function getStateClass(state) {
+  if (state === 'on' || state === 'locked' || state === 'home' || state === 'playing') return 'di-on';
+  if (state === 'unavailable' || state === 'unknown') return 'di-crit';
+  const b = parseFloat(state);
+  if (!isNaN(b) && b < 15) return 'di-warn';
+  return 'di-off';
+}
+
+function getStateColor(state) {
+  if (state === 'on' || state === 'locked' || state === 'home') return 'var(--green)';
+  if (state === 'unavailable' || state === 'unknown') return 'var(--red)';
+  if (state === 'off') return 'var(--text3)';
+  return 'var(--text2)';
+}
+
+async function loadDevices() {
+  const el = document.getElementById('devices-body');
+  el.innerHTML = '<div class="empty"><span class="spin"></span>Loading entities...</div>';
+  try {
+    allStates = await api('/api/devices/states');
+    // Update metrics
+    const unavail = allStates.filter(s => s.state==='unavailable'||s.state==='unknown');
+    const lowBatt = allStates.filter(s => {
+      const b = s.attributes?.battery_level ?? s.attributes?.battery;
+      return b !== undefined && Number(b) < 20;
+    });
+    const online = allStates.filter(s => s.state !== 'unavailable' && s.state !== 'unknown');
+    const domains = new Set(allStates.map(s => s.entity_id.split('.')[0]));
+    document.getElementById('dm-total').textContent   = allStates.length;
+    document.getElementById('dm-unavail').textContent = unavail.length;
+    document.getElementById('dm-batt').textContent    = lowBatt.length;
+    document.getElementById('dm-domains').textContent = domains.size;
+    document.getElementById('dm-online').textContent  = online.length;
+    // Populate domain filter
+    const df = document.getElementById('domain-filter');
+    const cur = df.value;
+    df.innerHTML = '<option value="">All domains</option>'
+      + [...domains].sort().map(d => '<option value="'+d+'"'+(d===cur?' selected':'')+'>'+d+'</option>').join('');
+    filterDevices();
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>' + e.message + '</div>';
+  }
+}
+
+function filterDevices() {
+  const domain = document.getElementById('domain-filter')?.value || '';
+  const state  = document.getElementById('state-filter')?.value  || '';
+  const q      = (document.getElementById('dev-search')?.value   || '').toLowerCase();
+  const filtered = allStates.filter(s =>
+    (!domain || s.entity_id.startsWith(domain + '.')) &&
+    (!state  || s.state === state) &&
+    (!q || s.entity_id.toLowerCase().includes(q)
+        || (s.attributes?.friendly_name || '').toLowerCase().includes(q))
+  ).slice(0, 200);
+
+  const el = document.getElementById('devices-body');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty"><i class="ti ti-search"></i>No entities match</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(s => {
+    const icon   = getDomainIcon(s.entity_id);
+    const cls    = getStateClass(s.state);
+    const name   = s.attributes?.friendly_name || s.entity_id;
+    const batt   = s.attributes?.battery_level ?? s.attributes?.battery;
+    const stColor = getStateColor(s.state);
+    const isUnavail = s.state === 'unavailable' || s.state === 'unknown';
+    return '<div class="dev-list-row" id="dlr-'+escHtml(s.entity_id)+'" onclick="selectDevice(\''+escHtml(s.entity_id)+'\')">'
+      + '<div class="dev-list-icon '+cls+'"><i class="ti '+icon+'"></i></div>'
+      + '<div>'
+        + '<div style="font-size:11px;font-family:var(--font-ui);font-weight:500;color:var(--text)">'+escHtml(name.slice(0,36))+'</div>'
+        + '<div style="font-size:9px;color:var(--text3)">'+escHtml(s.entity_id)+'</div>'
+      + '</div>'
+      + '<div style="text-align:center"><span style="font-size:10px;color:'+stColor+'">'+escHtml(s.state)+'</span></div>'
+      + '<div style="text-align:right;font-size:9px;color:var(--text3)">'+(batt !== undefined ? batt+'%🔋' : '')+'</div>'
+      + '</div>';
+  }).join('');
+}
+
+async function selectDevice(entityId) {
+  // Highlight selected
+  document.querySelectorAll('.dev-list-row').forEach(r => r.classList.remove('selected'));
+  const row = document.getElementById('dlr-' + entityId);
+  if (row) row.classList.add('selected');
+
+  const el = document.getElementById('device-detail-body');
+  el.innerHTML = '<div class="empty"><span class="spin"></span>Loading details...</div>';
+
+  const s = allStates.find(x => x.entity_id === entityId);
+  if (!s) { el.innerHTML = '<div class="empty">Entity not found</div>'; return; }
+
+  const dom   = entityId.split('.')[0];
+  const icon  = getDomainIcon(entityId);
+  const cls   = getStateClass(s.state);
+  const name  = s.attributes?.friendly_name || entityId;
+  const batt  = s.attributes?.battery_level ?? s.attributes?.battery;
+  const lastChanged = s.last_changed ? new Date(s.last_changed).toLocaleString() : '—';
+  const lastUpdated = s.last_updated ? new Date(s.last_updated).toLocaleString() : '—';
+  const stColor = getStateColor(s.state);
+
+  // Build attributes list (exclude large/noisy attrs)
+  const skipAttrs = new Set(['entity_picture','icon','supported_features','supported_color_modes',
+    'attribution','friendly_name','assumed_state','restored','device_class']);
+  const attrs = Object.entries(s.attributes || {})
+    .filter(([k]) => !skipAttrs.has(k))
+    .slice(0, 30);
+
+  // Fetch 24h history
+  let histHtml = '<div style="color:var(--text3);font-size:10px;padding:4px 0">Loading history...</div>';
+  let history = [];
+  try {
+    const since = new Date(Date.now() - 24*3600000).toISOString().slice(0,19) + 'Z';
+    const hdata = await api('/api/logs/history/' + encodeURIComponent(entityId));
+    if (Array.isArray(hdata) && hdata[0]) {
+      history = hdata[0].slice(-20).reverse();
+      histHtml = history.length === 0
+        ? '<div style="color:var(--text3);font-size:10px">No history in last 24h</div>'
+        : history.map(h => {
+            const ts = h.last_changed ? new Date(h.last_changed).toLocaleString() : '—';
+            const sc = getStateColor(h.state);
+            return '<div class="hist-row">'
+              + '<span style="color:var(--text3)">'+escHtml(ts)+'</span>'
+              + '<span style="color:'+sc+';font-weight:500">'+escHtml(h.state)+'</span>'
+              + '<span style="color:var(--text2)">'+(h.attributes?.brightness !== undefined ? 'brightness: '+h.attributes.brightness : '')+'</span>'
+              + '</div>';
+          }).join('');
+    } else histHtml = '<div style="color:var(--text3);font-size:10px">No history data</div>';
+  } catch(_) { histHtml = '<div style="color:var(--text3);font-size:10px">History unavailable</div>'; }
+
+  const stateValClass = s.state === 'unavailable' ? 'err' : s.state === 'on' ? 'ok' : '';
+
+  el.innerHTML = ''
+    // Header
+    + '<div class="detail-header">'
+      + '<div class="detail-icon '+cls+'"><i class="ti '+icon+'"></i></div>'
+      + '<div>'
+        + '<div class="detail-name">'+escHtml(name)+'</div>'
+        + '<div class="detail-eid">'+escHtml(entityId)+'</div>'
+        + '<div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">'
+          + '<span class="tag tag-blue">'+escHtml(dom)+'</span>'
+          + (s.attributes?.device_class ? '<span class="tag tag-purple">'+escHtml(s.attributes.device_class)+'</span>' : '')
+          + (batt !== undefined ? '<span class="tag '+(Number(batt)<15?'tag-red':Number(batt)<30?'tag-amber':'tag-green')+'">🔋 '+batt+'%</span>' : '')
+        + '</div>'
+      + '</div>'
+    + '</div>'
+
+    // State
+    + '<div class="detail-section">'
+      + '<div class="detail-section-title">Current State</div>'
+      + '<div class="detail-grid">'
+        + '<span class="detail-key">State</span><span class="detail-val '+stateValClass+'" style="font-size:16px;font-weight:500">'+escHtml(s.state)+'</span>'
+        + '<span class="detail-key">Last Changed</span><span class="detail-val">'+escHtml(lastChanged)+'</span>'
+        + '<span class="detail-key">Last Updated</span><span class="detail-val">'+escHtml(lastUpdated)+'</span>'
+        + (s.context?.id ? '<span class="detail-key">Context ID</span><span class="detail-val" style="font-size:9px">'+escHtml(s.context.id)+'</span>' : '')
+        + (s.context?.user_id ? '<span class="detail-key">Last User ID</span><span class="detail-val" style="color:var(--cyan)">'+escHtml(s.context.user_id)+'</span>' : '')
+      + '</div>'
+    + '</div>'
+
+    // Attributes
+    + (attrs.length > 0 ? '<div class="detail-section">'
+      + '<div class="detail-section-title">Attributes ('+attrs.length+')</div>'
+      + '<div class="detail-grid">'
+      + attrs.map(([k,v]) => {
+          const vs = typeof v === 'object' ? JSON.stringify(v).slice(0,80) : String(v).slice(0,80);
+          return '<span class="detail-key">'+escHtml(k)+'</span><span class="detail-val">'+escHtml(vs)+'</span>';
+        }).join('')
+      + '</div></div>' : '')
+
+    // Controls
+    + (dom === 'light' || dom === 'switch' || dom === 'input_boolean' ? '<div class="detail-section">'
+      + '<div class="detail-section-title">Controls</div>'
+      + '<div style="display:flex;gap:8px">'
+        + '<button class="act-btn act-cyan" onclick="callService(\''+dom+'\',\'turn_on\',\''+escHtml(entityId)+'\')"><i class="ti ti-power"></i> Turn On</button>'
+        + '<button class="act-btn act-red" onclick="callService(\''+dom+'\',\'turn_off\',\''+escHtml(entityId)+'\')"><i class="ti ti-power-off"></i> Turn Off</button>'
+      + '</div></div>' : '')
+    + (dom === 'lock' ? '<div class="detail-section">'
+      + '<div class="detail-section-title">Controls</div>'
+      + '<div style="display:flex;gap:8px">'
+        + '<button class="act-btn act-cyan" onclick="callService(\'lock\',\'lock\',\''+escHtml(entityId)+'\')"><i class="ti ti-lock"></i> Lock</button>'
+        + '<button class="act-btn act-red" onclick="callService(\'lock\',\'unlock\',\''+escHtml(entityId)+'\')"><i class="ti ti-lock-open"></i> Unlock</button>'
+      + '</div></div>' : '')
+
+    // 24h history
+    + '<div class="detail-history">'
+      + '<div class="detail-section-title">24h State History</div>'
+      + histHtml
+    + '</div>';
+}
+
+async function callService(domain, service, entityId) {
+  try {
+    await api('/api/devices/service', { method:'POST', body: JSON.stringify({ domain, service, entity_id: entityId }) });
+    await new Promise(r => setTimeout(r, 800));
+    allStates = await api('/api/devices/states');
+    filterDevices();
+    selectDevice(entityId);
+  } catch(e) { showModal('Service Error', '<p>'+e.message+'</p>'); }
+}
+
+function showEntityModal(s) {
+  selectDevice(s.entity_id);
+  showTab('devices');
+}
+
+
+
+// ══════════════════════════════════════════════════════════════
+//  CONNECTED DEVICES — full profile + activity report
+// ══════════════════════════════════════════════════════════════
+let allConnectedDevices = [];
+let selectedDevice = null;
+
+async function loadConnectedDevices() {
+  const el = document.getElementById('connected-list');
+  el.innerHTML = '<div class="empty"><span class="spin"></span>Scanning devices...</div>';
+  try {
+    allConnectedDevices = await api('/api/connected-devices');
+    renderConnectedList();
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>' + e.message + '</div>';
+  }
+}
+
+function renderConnectedList() {
+  const el = document.getElementById('connected-list');
+  if (!allConnectedDevices.length) {
+    el.innerHTML = '<div class="empty"><i class="ti ti-device-mobile-off"></i>No companion app devices found</div>';
+    return;
+  }
+  el.innerHTML = allConnectedDevices.map((d, i) => {
+    const platIcon = d.platform === 'ios'     ? 'ti-brand-apple'
+                   : d.platform === 'android' ? 'ti-brand-android'
+                   : d.platform === 'desktop' ? 'ti-device-desktop'
+                   : 'ti-device-mobile';
+    const onlineDot = d.online
+      ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;box-shadow:0 0 4px var(--green)"></span>'
+      : '<span style="width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;margin-right:5px"></span>';
+    const batt = d.sensors.battery_state || d.sensors.battery_level;
+    const battColor = batt && parseFloat(batt) < 20 ? 'var(--red)' : batt && parseFloat(batt) < 50 ? 'var(--amber)' : 'var(--green)';
+    const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleString() : '—';
+    const platLabel = d.platform === 'ios' ? 'iPhone / iPad' : d.platform === 'android' ? 'Android' : d.platform === 'desktop' ? 'Desktop' : 'HA App';
+
+    return '<div class="dev-list-row" style="grid-template-columns:36px 1fr 70px" id="cdev-'+i+'" onclick="selectConnectedDevice('+i+')">'
+      + '<div class="dev-list-icon di-on" style="background:var(--cyan-dim);color:var(--cyan)"><i class="ti '+platIcon+'"></i></div>'
+      + '<div>'
+        + '<div style="font-size:12px;font-family:var(--font-ui);font-weight:500;color:var(--text);display:flex;align-items:center">'+onlineDot+escHtml(d.name)+'</div>'
+        + '<div style="font-size:10px;color:var(--text3)">'+escHtml(platLabel)+' · '+d.entities.length+' entities · last: '+escHtml(lastSeen.slice(0,16))+'</div>'
+      + '</div>'
+      + '<div style="text-align:right">'
+        + (batt ? '<div style="font-size:11px;color:'+battColor+'">🔋'+escHtml(String(batt).replace(/[^0-9.]/g,''))+'%</div>' : '')
+        + '<div style="font-size:9px;color:'+(d.online?'var(--green)':'var(--text3)')+'">'+( d.online?'online':'offline')+'</div>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+}
+
+async function selectConnectedDevice(idx) {
+  selectedDevice = allConnectedDevices[idx];
+  document.querySelectorAll('#connected-list .dev-list-row').forEach((r,i) => r.classList.toggle('selected', i===idx));
+  renderDeviceProfile(selectedDevice);
+  await loadDeviceReport();
+}
+
+function renderDeviceProfile(d) {
+  const el = document.getElementById('cdev-detail-body');
+  if (!el || !d) return;
+
+  const platIcon = d.platform === 'ios' ? 'ti-brand-apple' : d.platform === 'android' ? 'ti-brand-android' : 'ti-device-mobile';
+  const platLabel = d.platform === 'ios' ? 'iPhone / iPad (iOS)' : d.platform === 'android' ? 'Android' : 'HA Companion App';
+  const s = d.sensors;
+  const batt = s.battery_state || s.battery_level;
+  const battPct = batt ? parseFloat(batt) : null;
+  const battColor = battPct !== null ? (battPct < 20 ? 'var(--red)' : battPct < 50 ? 'var(--amber)' : 'var(--green)') : 'var(--text3)';
+  const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleString() : '—';
+
+  const infoRows = [
+    ['Platform',     platLabel],
+    ['Status',       d.online ? '<span style="color:var(--green)">● Online</span>' : '<span style="color:var(--text3)">○ Offline</span>'],
+    ['Last Seen',    escHtml(lastSeen)],
+    ['Battery',      battPct !== null ? '<span style="color:'+battColor+'">🔋 '+battPct+'%'+(s.charger_type&&s.charger_type!=='none'?' · charging':'')+'</span>' : '—'],
+    ['Charger',      escHtml(s.charger_type || '—')],
+    ['WiFi SSID',    escHtml(s.ssid || '—')],
+    ['WiFi BSSID',   escHtml(s.bssid || '—')],
+    ['Connection',   escHtml(s.connection_type || '—')],
+    ['SIM 1',        escHtml(s.sim_1 || '—')],
+    ['SIM 2',        escHtml(s.sim_2 || '—')],
+    ['App Version',  escHtml(s.app_version || '—')],
+    ['Last Trigger', escHtml(s.last_trigger || '—')],
+    ['Focus/DND',    escHtml(s.focus || '—')],
+    ['Audio',        escHtml(s.audio || '—')],
+    ['Location Perm',escHtml(s.location_permission || '—')],
+    ['Presence',     s.presence ? '<span style="color:'+(s.presence==='home'?'var(--green)':'var(--amber)')+'">'+escHtml(s.presence)+'</span>' : '—'],
+    ['Entities',     d.entities.length + ' registered'],
+  ].filter(([,v]) => v && v !== '—');
+
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">'
+    + '<div class="dev-list-icon di-on" style="width:44px;height:44px;border-radius:8px;font-size:22px;background:var(--cyan-dim);color:var(--cyan)"><i class="ti '+platIcon+'"></i></div>'
+    + '<div>'
+      + '<div style="font-size:15px;font-family:var(--font-ui);font-weight:600;color:var(--text)">'+escHtml(d.name)+'</div>'
+      + '<div style="font-size:10px;color:var(--text3)">'+escHtml(platLabel)+'</div>'
+    + '</div>'
+  + '</div>'
+  + '<div class="detail-grid">'
+  + infoRows.map(([k,v]) => '<span class="detail-key">'+escHtml(k)+'</span><span class="detail-val" style="color:var(--text)">'+v+'</span>').join('')
+  + '</div>'
+  + '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">'
+    + '<div class="detail-section-title" style="margin-bottom:6px">All Entity IDs</div>'
+    + '<div style="font-size:9px;color:var(--text3);line-height:1.8;font-family:var(--font-mono)">'
+    + d.entities.map(eid => escHtml(eid)).join('<br>')
+    + '</div>'
+  + '</div>';
+}
+
+async function loadDeviceReport() {
+  if (!selectedDevice) return;
+  const el = document.getElementById('cdev-report-body');
+  const hours = document.getElementById('report-hours')?.value || '24';
+  el.innerHTML = '<div class="empty"><span class="spin"></span>Loading activity...</div>';
+  try {
+    const data = await api('/api/connected-devices/' + encodeURIComponent(selectedDevice.name) + '/report?hours=' + hours);
+    renderDeviceReport(data);
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>' + e.message + '</div>';
+  }
+}
+
+function renderDeviceReport(data) {
+  const el = document.getElementById('cdev-report-body');
+  if (!data || !el) return;
+
+  const s = data.summary || {};
+  const actions = data.actions || [];
+
+  // Summary bar
+  const domainBars = Object.entries(s.by_domain || {})
+    .sort((a,b) => b[1]-a[1]).slice(0,6)
+    .map(([dom,cnt]) => '<span class="tag tag-blue" style="margin:2px">'+escHtml(dom)+': '+cnt+'</span>').join('');
+  const actionBars = Object.entries(s.by_action || {})
+    .sort((a,b) => b[1]-a[1])
+    .map(([act,cnt]) => {
+      const cls = act==='ON'?'tag-green':act==='OFF'?'tag-red':'tag-blue';
+      return '<span class="tag '+cls+'" style="margin:2px">'+escHtml(act)+': '+cnt+'</span>';
+    }).join('');
+
+  if (!actions.length) {
+    el.innerHTML = '<div style="padding:14px">'
+      + '<div style="color:var(--amber);font-size:11px;margin-bottom:8px"><i class="ti ti-info-circle"></i> No actions found for this device in the last '+escHtml(String(s.hours||24))+'h</div>'
+      + '<div style="color:var(--text3);font-size:10px">This device may not have a linked HA user account, or may only control physical switches.</div>'
+      + '</div>';
+    return;
+  }
+
+  el.innerHTML = '<div style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg2)">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+      + '<span style="font-size:20px;font-weight:300;color:var(--cyan)">'+s.total_actions+'</span>'
+      + '<span style="font-size:10px;color:var(--text3)">total actions in last '+escHtml(String(s.hours))+'h</span>'
+    + '</div>'
+    + '<div style="margin-bottom:4px;font-size:9px;color:var(--text3);letter-spacing:.5px">BY DOMAIN</div>'
+    + '<div style="margin-bottom:6px">'+domainBars+'</div>'
+    + '<div style="font-size:9px;color:var(--text3);letter-spacing:.5px;margin-bottom:4px">BY ACTION</div>'
+    + '<div>'+actionBars+'</div>'
+  + '</div>'
+  + actions.map((a, idx) => {
+      const actionClass = 'action-' + (a.action || 'EVENT');
+      const expId = 'rep-exp-' + idx;
+      const rowId = 'rep-row-' + idx;
+      return '<div class="dact-row" id="'+rowId+'">'
+        + '<div class="dact-main" style="grid-template-columns:120px 60px 1fr 80px 16px" onclick="toggleDactExpand(\''+expId+'\',\''+rowId+'\')">'
+          + '<span style="color:var(--text3);font-size:10px">'+escHtml((a.timestamp||'').slice(0,16))+'</span>'
+          + '<span class="action-pill '+actionClass+'">'+escHtml(a.action||'EVT')+'</span>'
+          + '<div style="overflow:hidden">'
+            + '<div style="font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-ui)">'+escHtml((a.entity_name||'—').slice(0,36))+'</div>'
+            + '<div style="font-size:9px;color:var(--text3)">'+escHtml(a.entity_id||'')+'</div>'
+          + '</div>'
+          + '<span class="tag tag-cyan" style="font-size:9px">'+escHtml(a.domain||'—')+'</span>'
+          + '<span style="color:var(--text3);font-size:12px">›</span>'
+        + '</div>'
+        + '<div class="dact-expand" id="'+expId+'">'
+          + dField('Time',        escHtml(a.timestamp||'—'), '')
+          + dField('Entity',      escHtml(a.entity_name||'—'), '')
+          + dField('Entity ID',   escHtml(a.entity_id||'—'), '')
+          + dField('Domain',      escHtml(a.domain||'—'), '')
+          + dField('Action',      '<span class="action-pill '+actionClass+'">'+escHtml(a.action||'—')+'</span>', '', true)
+          + dField('Service',     escHtml(a.service||'—'), '')
+          + dField('State',       escHtml(a.state||'—'), a.state==='on'?'on':a.state==='off'?'off':'')
+          + dField('User ID',     escHtml(a.user_id||'—'), '')
+        + '</div>'
+      + '</div>';
+    }).join('');
+}
+
+
+
+// ══════════════════════════════════════════════════════════════
+//  WEBSOCKET STATUS + BROWSER SESSIONS
+// ══════════════════════════════════════════════════════════════
+async function checkWSStatus() {
+  if (!connected) return;
+  try {
+    const d = await api('/api/ws/status');
+    const dot = document.getElementById('ws-dot');
+    const lbl = document.getElementById('ws-status');
+    if (dot) {
+      dot.style.background = d.connected ? 'var(--green)' : 'var(--red)';
+      dot.style.boxShadow  = d.connected ? '0 0 4px var(--green)' : 'none';
+    }
+    if (lbl) {
+      const sessInfo = d.browser_sessions > 0 ? ' · ' + d.browser_sessions + ' sessions' : '';
+      lbl.title = 'WebSocket: ' + (d.connected ? 'connected' : 'disconnected')
+        + ' · ' + d.action_log_size + ' events captured' + sessInfo;
+    }
+  } catch(_) {}
+}
+
+async function reloadSessions() {
+  try {
+    const d = await api('/api/ws/reload-sessions', { method: 'POST' });
+    console.log('Sessions reloaded:', d);
+    await loadWSSessions();
+  } catch(e) {
+    console.error('reload error:', e.message);
+  }
+}
+
+async function loadWSSessions() {
+  const el = document.getElementById('sessions-body');
+  if (!el) return;
+  el.innerHTML = '<div class="empty"><span class="spin"></span>Loading sessions...</div>';
+  try {
+    const d = await api('/api/ws/sessions');
+    if (!d.connected) {
+      el.innerHTML = '<div style="padding:14px">'
+        + '<div style="color:var(--amber);font-size:11px;margin-bottom:10px"><i class="ti ti-info-circle"></i> WebSocket not connected yet. Click Connect first.</div>'
+        + '<div style="color:var(--text3);font-size:10px">The WS stream connects automatically when you click Connect in the panel.</div>'
+        + '</div>';
+      return;
+    }
+    const sessions = d.sessions || [];
+    if (!sessions.length) {
+      el.innerHTML = '<div style="padding:14px">'
+        + '<div style="color:var(--amber);font-size:11px;margin-bottom:10px"><i class="ti ti-info-circle"></i> No Browser Mod sessions detected.</div>'
+        + '<div style="color:var(--text3);font-size:10px">Install Browser Mod via HACS → add <code style="color:var(--cyan)">browser_mod:</code> to configuration.yaml → restart HA → open any dashboard in your browser/app. Sessions appear here automatically.</div>'
+        + '</div>';
+      return;
+    }
+    el.innerHTML = sessions.map((s, i) => {
+      const icon      = s.icon || ((/mobile|iphone|android/i.test(s.platform||'')) ? 'ti-device-mobile' : 'ti-device-desktop');
+      const isMobile  = s.is_mobile || /mobile|iphone|android/i.test(s.platform||'');
+      const isHA      = s.is_ha_app || /ha app/i.test(s.platform||'');
+      const platColor = isHA ? 'var(--cyan)' : isMobile ? 'var(--amber)' : 'var(--blue)';
+      const visColor  = s.visibility === 'visible' ? 'var(--green)' : 'var(--text3)';
+      const expId     = 'sess-exp-' + i;
+      const rowId     = 'sess-row-' + i;
+
+      const onclickStr = 'toggleDactExpand(' + JSON.stringify(expId) + ',' + JSON.stringify(rowId) + ')';
+      return '<div class="dact-row" id="'+rowId+'">'
+        + '<div class="dact-main" style="grid-template-columns:36px 1fr 160px 130px 70px 16px" onclick="'+onclickStr+'">'
+          + '<div class="avatar av-blue" style="background:var(--blue-dim);color:'+platColor+'"><i class="ti '+icon+'" style="font-size:14px"></i></div>'
+          + '<div><div style="font-size:12px;font-family:var(--font-ui);font-weight:500;color:var(--text)">'+(escHtml(s.user||'Anonymous'))+'</div>'
+            + '<div style="font-size:9px;color:var(--text3)">'+escHtml((s.hash||'').slice(0,16))+'</div></div>'
+          + '<span style="font-size:11px;color:'+platColor+'">'+escHtml(s.platform||'—')+'</span>'
+          + '<span style="font-size:11px;color:var(--text2)">'+escHtml(s.browser||'—')+'</span>'
+          + '<span style="font-size:10px;color:'+visColor+'">'+escHtml(s.visibility||'—')+'</span>'
+          + '<span style="color:var(--text3);font-size:12px">›</span>'
+        + '</div>'
+        + '<div class="dact-expand" id="'+expId+'">'
+          + dField('User',        escHtml(s.user||'Anonymous (not logged in)'), s.user?'user':'')
+          + dField('Platform',    escHtml(s.platform||'—'), 'user')
+          + dField('Browser',     escHtml(s.browser||'—'), '')
+          + dField('Visibility',  escHtml(s.visibility||'—'), s.visibility==='visible'?'on':'')
+          + dField('Dashboard',   escHtml(s.path||'—'), '')
+          + dField('Panel',       escHtml(s.panel||'—'), '')
+          + dField('Screen',      escHtml((s.width||'?')+'×'+(s.height||'?')+'px'), '')
+          + dField('Last Seen',   escHtml(s.last_seen ? new Date(s.last_seen).toLocaleString() : '—'), '')
+          + dField('User Agent',  escHtml((s.user_agent||'—').slice(0,200)), '', false, true)
+          + dField('Session ID',  escHtml(s.id||'—'), '', false, true)
+        + '</div>'
+      + '</div>';
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>' + e.message + '</div>';
+  }
+}
+
+// Poll WS status every 15s
+setInterval(checkWSStatus, 15000);
+// Auto-reload Browser Mod sessions every 60s to keep data fresh after server restart
+setInterval(async () => {
+  if (connected) {
+    try { await api('/api/ws/reload-sessions', { method: 'POST' }); } catch(_) {}
+  }
+}, 60000);
+
+// ── Auto-refresh every 60s ─────────────────────────────────────────────────
+setInterval(()=>{ if(connected) loadSummary(); }, 60000);
+</script>
+</body>
+</html>
