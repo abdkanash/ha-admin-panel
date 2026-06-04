@@ -77,6 +77,21 @@ recorder:
   include:
     entity_globs:
       - sensor.browser_mod_*
+      - light.*
+      - switch.*
+      - lock.*
+      - cover.*
+      - climate.*
+      - fan.*
+      - media_player.*
+      - vacuum.*
+      - input_boolean.*
+      - scene.*
+      - button.*
+      - automation.*
+      - script.*
+      - person.*
+      - device_tracker.*
 ```
 
 Without this, HA purges Browser Mod history after 10 days (default).

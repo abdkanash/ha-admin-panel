@@ -4,9 +4,13 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>HA Admin — SOC Panel</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* System monospace stack — no external font load, zero latency */
+:root {
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', 'Monaco', monospace;
+  --font-ui:   'Inter', 'Segoe UI', 'SF Pro Display', system-ui, sans-serif;
+}
+</style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -32,8 +36,8 @@
   --blue-dim:#0a2a3d;
   --purple:#c084fc;
   --purple-dim:#2a1040;
-  --font-mono:'JetBrains Mono',monospace;
-  --font-ui:'Space Grotesk',sans-serif;
+  --font-mono:'JetBrains Mono','Cascadia Code','Fira Code','Consolas','Monaco',monospace;
+  --font-ui:'Inter','Segoe UI','SF Pro Display',system-ui,sans-serif;
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-mono);font-size:13px;line-height:1.5;overflow:hidden}
 
@@ -644,17 +648,27 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
       <div id="log-panel-devices" class="pcard" style="display:none">
         <div class="phead">
           <div class="ptitle"><i class="ti ti-activity"></i> Device Action Log <span id="dev-log-count" style="color:var(--text3);font-size:10px"></span></div>
-          <select class="filter-select" id="dev-domain-filter" onchange="applyLogFilters()">
-            <option value="">All domains</option>
-            <option value="light">Lights</option>
-            <option value="switch">Switches</option>
-            <option value="lock">Locks</option>
-            <option value="cover">Covers</option>
-            <option value="climate">Climate</option>
-            <option value="automation">Automations</option>
-            <option value="script">Scripts</option>
-            <option value="scene">Scenes</option>
-          </select>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select class="filter-select" id="dev-domain-filter" onchange="applyLogFilters()">
+              <option value="">All domains</option>
+              <option value="light">Lights</option>
+              <option value="switch">Switches</option>
+              <option value="lock">Locks</option>
+              <option value="cover">Covers</option>
+              <option value="climate">Climate</option>
+              <option value="automation">Automations</option>
+              <option value="script">Scripts</option>
+              <option value="scene">Scenes</option>
+            </select>
+            <select class="filter-select" id="dev-limit" onchange="loadDeviceLogs()" title="Max entries to fetch from HA">
+              <option value="100">100 entries</option>
+              <option value="250">250 entries</option>
+              <option value="400" selected>400 entries</option>
+              <option value="750">750 entries</option>
+              <option value="1000">1000 entries</option>
+              <option value="2000">2000 entries</option>
+            </select>
+          </div>
         </div>
         <div class="shead">timestamp · device · action · triggered by · context</div>
         <div class="pbody" id="device-logs-body" style="max-height:calc(100vh - 320px)"><div class="empty"><i class="ti ti-plug"></i>Connect to load</div></div>
@@ -1310,8 +1324,9 @@ function renderAuthLogs() {
 async function loadDeviceLogs() {
   const el = document.getElementById('device-logs-body');
   if (el) el.innerHTML = '<div class="empty"><span class="spin"></span>Loading device actions...</div>';
+  const limit = document.getElementById('dev-limit')?.value || '400';
   try {
-    rawDeviceLogs = await api('/api/logs/devices?hours='+getHours()+'&limit=400');
+    rawDeviceLogs = await api('/api/logs/devices?hours='+getHours()+'&limit='+limit);
     renderDeviceLogs();
   } catch(e) {
     if (el) el.innerHTML = '<div class="empty"><i class="ti ti-alert-circle"></i>'+e.message+'</div>';
@@ -1352,14 +1367,26 @@ function renderDeviceLogs() {
         || (l.user_name   ||'').toLowerCase().includes(q)
         || (l.trigger_label||'').toLowerCase().includes(q))
   );
+  const devLimit = parseInt(document.getElementById('dev-limit')?.value || '400');
   const cnt = document.getElementById('dev-log-count');
-  if (cnt) cnt.textContent = '(' + data.length + ' actions)';
+  if (cnt) {
+    const atLimit = rawDeviceLogs.length >= devLimit;
+    cnt.textContent = '(' + data.length + ' actions'
+      + (atLimit ? ' · at limit — increase to see more' : '') + ')';
+    if (cnt.nextElementSibling) cnt.nextElementSibling.remove();
+    if (atLimit) {
+      const warn = document.createElement('span');
+      warn.style.cssText = 'font-size:9px;color:var(--amber);margin-left:6px';
+      warn.textContent = '▲ limit reached';
+      cnt.parentNode.insertBefore(warn, cnt.nextSibling);
+    }
+  }
   if (!data.length) {
     el.innerHTML = '<div style="padding:16px 14px;color:var(--text3);font-size:11px">No device actions found. Logbook must be enabled.</div>';
     return;
   }
 
-  el.innerHTML = data.slice(0, 400).map((l, idx) => {
+  el.innerHTML = data.slice(0, devLimit).map((l, idx) => {
     const ts          = (l.timestamp || '').slice(0, 19);
     const actionClass = 'action-' + (l.action || 'EVENT');
     const name        = escHtml((l.entity_name || l.entity_id || l.domain || '—').slice(0, 32));

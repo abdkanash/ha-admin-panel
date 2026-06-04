@@ -3,7 +3,22 @@ const cors          = require('cors');
 const path          = require('path');
 const haWS          = require('./ha-ws');
 const sessionHist   = require('./ha-session-history');
-const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+// ── HTTP keep-alive agent — reuses TCP connections to HA ─────────────────────
+// Without this, every fetch() opens a new TCP connection (100–300ms overhead).
+// With keep-alive, the connection stays open and is reused — near-zero overhead.
+const http  = require('http');
+const https = require('https');
+const httpAgent  = new http.Agent({ keepAlive: true, maxSockets: 6 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 6, rejectUnauthorized: false });
+
+const fetch = (...args) => import('node-fetch').then(({ default: f }) => {
+  // Inject the keep-alive agent based on URL protocol
+  if (args[1] && typeof args[1] === 'object') {
+    const url = typeof args[0] === 'string' ? args[0] : args[0].url || '';
+    args[1].agent = url.startsWith('https') ? httpsAgent : httpAgent;
+  }
+  return f(...args);
+});
 require('dotenv').config();
 
 // HA Admin Panel — server.js
@@ -11,14 +26,59 @@ require('dotenv').config();
 // Changelog: see CHANGELOG.md
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-const HA_URL = (process.env.HA_URL || 'http://homeassistant.local:8123').replace(/\/$/, '');
+const PORT     = process.env.PORT     || 3001;
+const HA_URL   = (process.env.HA_URL  || 'http://homeassistant.local:8123').replace(/\/$/, '');
 const HA_TOKEN = process.env.HA_TOKEN || '';
+
+// ── Performance: /states cache ────────────────────────────────────────────────
+// /states returns 500KB–2MB and is called on every request. Cache it for 30s.
+// All endpoints call getCachedStates() instead of haGet('/states') directly.
+let _statesCache    = null;
+let _statesCacheAt  = 0;
+let _statesFetching = null; // deduplicates concurrent requests
+const STATES_TTL_MS = 30 * 1000; // 30 seconds
+
+async function getCachedStates(token) {
+  const now = Date.now();
+  if (_statesCache && (now - _statesCacheAt) < STATES_TTL_MS) {
+    return _statesCache;
+  }
+  // If a fetch is already in flight, wait for it instead of firing another
+  if (_statesFetching) return _statesFetching;
+  _statesFetching = haGet('/states', token)
+    .then(data => {
+      _statesCache   = data;
+      _statesCacheAt = Date.now();
+      _statesFetching = null;
+      return data;
+    })
+    .catch(err => {
+      _statesFetching = null;
+      // Return stale cache on error rather than crashing
+      if (_statesCache) {
+        console.warn('[Cache] /states fetch failed, using stale cache:', err.message);
+        return _statesCache;
+      }
+      throw err;
+    });
+  return _statesFetching;
+}
+
+// Invalidate states cache (call after writing to HA — e.g. service calls)
+function invalidateStatesCache() {
+  _statesCache   = null;
+  _statesCacheAt = 0;
+}
 
 app.use(cors());
 app.use(express.json());
-app.use((req, _res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+app.use((req, res, next) => {
+  const t0 = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - t0;
+    const slow = ms > 2000 ? ' ⚠ SLOW' : ms > 500 ? ' △' : '';
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} ${res.statusCode} ${ms}ms${slow}`);
+  });
   next();
 });
 
@@ -73,7 +133,7 @@ app.get('/api/connect', requireToken, async (req, res) => {
     // Pre-load Browser Mod states immediately via REST so sessions are ready
     // before any device log requests come in (don't wait for WS state_changed events)
     try {
-      const allStates = await haGet('/states', req.haToken);
+      const allStates = await getCachedStates(req.haToken);
       const bmStates  = allStates.filter(s => s.entity_id.startsWith('sensor.browser_mod_'));
       if (bmStates.length > 0) {
         haWS.preloadBrowserModStates(bmStates);
@@ -101,13 +161,13 @@ app.get('/api/system/info', requireToken, async (req, res) => {
 // ── States / Devices ────────────────────────────────────────────────────────
 app.get('/api/devices/states', requireToken, async (req, res) => {
   try {
-    res.json(await haGet('/states', req.haToken));
+    res.json(await getCachedStates(req.haToken));
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 app.get('/api/devices/summary', requireToken, async (req, res) => {
   try {
-    const states = await haGet('/states', req.haToken);
+    const states = await getCachedStates(req.haToken);
     const unavailable = states.filter(s => s.state === 'unavailable' || s.state === 'unknown');
     const lowBattery = states.filter(s => {
       const b = s.attributes?.battery_level ?? s.attributes?.battery;
@@ -129,14 +189,16 @@ app.post('/api/devices/service', requireToken, async (req, res) => {
   const { domain, service, entity_id, data = {} } = req.body;
   if (!domain || !service) return res.status(400).json({ error: 'domain and service required' });
   try {
-    res.json(await haPost(`/services/${domain}/${service}`, req.haToken, { entity_id, ...data }));
+    const result = await haPost(`/services/${domain}/${service}`, req.haToken, { entity_id, ...data });
+    invalidateStatesCache(); // entity state changed — invalidate cache
+    res.json(result);
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 // ── Automations ─────────────────────────────────────────────────────────────
 app.get('/api/automations', requireToken, async (req, res) => {
   try {
-    const states = await haGet('/states', req.haToken);
+    const states = await getCachedStates(req.haToken);
     res.json(states
       .filter(s => s.entity_id.startsWith('automation.'))
       .map(a => ({
@@ -165,7 +227,7 @@ app.post('/api/automations/:id/trigger', requireToken, async (req, res) => {
 // We use /api/states to find person entities and /api/logbook for activity
 app.get('/api/users', requireToken, async (req, res) => {
   try {
-    const states = await haGet('/states', req.haToken);
+    const states = await getCachedStates(req.haToken);
     // person.* entities represent tracked people/users
     const persons = states.filter(s => s.entity_id.startsWith('person.'));
     // input_boolean / device_tracker as supplementary
@@ -217,7 +279,7 @@ app.get('/api/users/tokens', requireToken, async (req, res) => {
     const events = [];
     try {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const logbook = await haGet('/logbook/' + since, req.haToken);
+      const logbook = await haGet('/logbook/' + since + '?minimal_response', req.haToken);
       if (Array.isArray(logbook)) {
         logbook
           .filter(e => /auth|login|token|access/i.test(JSON.stringify(e)))
@@ -300,7 +362,7 @@ const deviceTrackerCache = {};
 async function buildUserLookup(token) {
   if (Date.now() < userLookupExpiry) return userLookupCache;
   try {
-    const states = await haGet('/states', token);
+    const states = await getCachedStates(token);
     const lookup = {};
     // Extract person/device names from companion app sensor entities
     // Pattern: "AbdKanash iPhone Battery State" -> person = "AbdKanash"
@@ -412,12 +474,17 @@ function classifyEntry(e) {
 app.get('/api/logs/system', requireToken, async (req, res) => {
   const { level, limit = 300, hours = 24 } = req.query;
   const entries = [];
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const now   = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const since = new Date(Date.now() - Number(hours) * 3600000).toISOString();
+
+  // Fetch logbook + states in parallel
+  const [lb, states] = await Promise.all([
+    haGet('/logbook/' + since + '?minimal_response', req.haToken).catch(e => { console.warn('logbook:', e.message); return []; }),
+    getCachedStates(req.haToken).catch(() => []),
+  ]);
 
   // logbook
   try {
-    const since = new Date(Date.now() - Number(hours) * 3600000).toISOString();
-    const lb = await haGet('/logbook/' + since, req.haToken);
     if (Array.isArray(lb)) {
       lb.forEach((e, i) => {
         const msg = [e.name, e.message].filter(Boolean).join(' — ') || 'event';
@@ -439,9 +506,8 @@ app.get('/api/logs/system', requireToken, async (req, res) => {
     }
   } catch(e) { console.warn('logbook:', e.message); }
 
-  // States: unavailable + low battery
+  // States: unavailable + low battery (already fetched in parallel above)
   try {
-    const states = await haGet('/states', req.haToken);
     states.filter(s => s.state==='unavailable'||s.state==='unknown').slice(0,80).forEach((s,i) => {
       const ts = s.last_changed ? new Date(s.last_changed).toISOString().slice(0,19).replace('T',' ') : now;
       entries.push({
@@ -478,7 +544,7 @@ app.get('/api/logs/auth', requireToken, async (req, res) => {
 
   try {
     const since = new Date(Date.now() - Number(hours) * 3600000).toISOString();
-    const lb = await haGet('/logbook/' + since, req.haToken);
+    const lb = await haGet('/logbook/' + since + '?minimal_response', req.haToken);
     if (Array.isArray(lb)) {
       lb.forEach((e, i) => {
         const fullText = JSON.stringify(e).toLowerCase();
@@ -506,7 +572,7 @@ app.get('/api/logs/auth', requireToken, async (req, res) => {
 
   // Supplement with persons' last_changed as proxy for activity
   try {
-    const states = await haGet('/states', req.haToken);
+    const states = await getCachedStates(req.haToken);
     states.filter(s => s.entity_id.startsWith('person.')).forEach((s,i) => {
       const ts = s.last_changed ? new Date(s.last_changed).toISOString().slice(0,19).replace('T',' ') : now;
       entries.push({
@@ -531,13 +597,38 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
   const { limit = 400, hours = 24, domain } = req.query;
   const entries = [];
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const since = new Date(Date.now() - Number(hours) * 3600000).toISOString();
 
-  // Build user name lookup from companion app sensors
+  // Fetch states + logbook IN PARALLEL — saves one full RTT to HA
+  // Both are needed but neither depends on the other
+  let states = [], lb = [];
+  // Build domain filter — tells HA to only return entries for controllable devices
+  // This reduces the logbook payload significantly vs fetching everything
+  const DEVICE_DOMAINS = ['light','switch','cover','lock','climate','fan',
+    'media_player','vacuum','input_boolean','scene','button','number'];
+  const domainParam = domain
+    ? `&domain=${domain}`
+    : DEVICE_DOMAINS.map(d => `domain[]=${d}`).join('&');
+
+  try {
+    [states, lb] = await Promise.all([
+      getCachedStates(req.haToken),
+      // No minimal_response — device log needs full fields (domain, context_user_id etc.)
+      // Domain filter reduces payload to only controllable device entries
+      haGet(`/logbook/${since}?${domainParam}`, req.haToken)
+        .catch(e => {
+          // HA <2023.x doesn't support domain[] param — fall back to full logbook
+          console.warn('[DeviceLog] domain filter failed, retrying without filter:', e.message);
+          return haGet('/logbook/' + since, req.haToken).catch(() => []);
+        }),
+    ]);
+  } catch(e) {
+    return res.status(502).json({ error: e.message });
+  }
+  if (!Array.isArray(lb)) lb = [];
+
+  // Build user name lookup from companion app sensors (uses cached states — free)
   await buildUserLookup(req.haToken);
-
-  // Load ALL states once — used for user resolution, device detection, and HA-stored sessions
-  let states = [];
-  try { states = await haGet('/states', req.haToken); } catch (_) {}
 
   // Load HA-stored Browser Mod sessions (written by HA automation — survives Node restarts)
   // Format: input_text.smt_session_<username> = "hash|user_agent|timestamp"
@@ -662,23 +753,62 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
     }
   });
 
+  // Pre-fetch session history timeline ONCE before the loop.
+  // This is the key performance fix — instead of calling resolveSessionAtTime()
+  // per entry (519 × async HA call = hang), we build the timeline once (1 HA call)
+  // then do pure in-memory lookups inside the loop.
+  let sessionTimeline = {};
   try {
-    const since = new Date(Date.now() - Number(hours) * 3600000).toISOString();
-    const lb = await haGet('/logbook/' + since, req.haToken);
-    if (!Array.isArray(lb)) return res.json([]);
+    sessionTimeline = await sessionHist.getTimeline(HA_URL, req.haToken, Number(hours));
+  } catch(e) {
+    console.warn('[SessionHistory] timeline prefetch failed:', e.message);
+  }
 
+  // Synchronous session resolver — uses pre-fetched timeline, no async, no HA calls
+  function resolveFromTimeline(userName, actionTimestamp) {
+    if (!userName || !actionTimestamp) return null;
+    const uLow     = userName.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    const actionTs = new Date(actionTimestamp).getTime();
+    const MAX_GAP  = 30 * 60 * 1000;
+
+    let entries = sessionTimeline[uLow];
+    if (!entries || !entries.length) {
+      const key = Object.keys(sessionTimeline).find(k =>
+        k.includes(uLow.split(' ')[0]) || uLow.includes(k.split(' ')[0])
+      );
+      entries = key ? sessionTimeline[key] : null;
+    }
+    if (!entries || !entries.length) return null;
+
+    // Find intervals covering the action timestamp
+    const covering = entries.filter(e => {
+      const until = e.until_ts ?? (Date.now() + 86400000);
+      return actionTs >= e.from_ts && actionTs <= until;
+    });
+    if (covering.length) {
+      covering.sort((a, b) => b.from_ts - a.from_ts);
+      return covering[0];
+    }
+    // Fallback: session ended up to 30 min before action
+    const before = entries
+      .filter(e => e.until_ts && e.until_ts < actionTs && (actionTs - e.until_ts) <= MAX_GAP)
+      .sort((a, b) => b.until_ts - a.until_ts);
+    return before.length ? before[0] : null;
+  }
+
+  try {
     let i = 0;
     for (const e of lb) {
       i++;
-      const dom = e.domain || (e.entity_id || '').split('.')[0] || '';
+      // Extract domain — fall back to entity_id prefix or context_domain
+      const dom = e.domain
+        || (e.entity_id ? e.entity_id.split('.')[0] : null)
+        || e.context_domain
+        || '';
 
-      // Only controllable device domains
-      const deviceDomains = ['light', 'switch', 'cover', 'lock', 'climate', 'fan',
-        'media_player', 'vacuum', 'input_boolean', 'scene', 'button', 'number'];
-      if (!deviceDomains.includes(dom)) return;
-      // Skip automation/script triggers — only log actual device state changes
-      if (dom === 'automation' || dom === 'script') return;
-      if (domain && dom !== domain) return;
+      if (!dom || !DEVICE_DOMAINS.includes(dom)) continue;
+      if (dom === 'automation' || dom === 'script') continue;
+      if (domain && dom !== domain) continue;
 
       const ctx = parseContext(e);
       const classified = classifyEntry(e);
@@ -751,29 +881,21 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
           }
         }
 
-        // Layer 4 — HA history API (exact platform at exact action time)
-        // This resolves the "Node was offline for 2 days" problem.
-        // Queries Browser Mod sensor state history and finds the session
-        // active at the EXACT timestamp of this action.
+        // Layer 4 — session history timeline (pre-fetched before loop, sync lookup)
+        // Resolves exact device at exact action time — covers Node offline gaps.
         if (!bmSession && resolvedUserName && e.when) {
-          try {
-            const hist = await sessionHist.resolveSessionAtTime(
-              HA_URL, req.haToken, resolvedUserName, e.when, Number(hours)
-            );
-            if (hist) {
-              bmSession = {
-                user_agent: hist.ua,
-                platform:   hist.platform,
-                browser:    hist.browser,
-                is_mobile:  hist.is_mobile,
-                is_ha_app:  hist.is_ha_app,
-                hash:       hist.hash,
-                id:         hist.hash,
-                source:     'ha_history',
-              };
-            }
-          } catch(histErr) {
-            console.warn('[SessionHistory] resolve error:', histErr.message);
+          const hist = resolveFromTimeline(resolvedUserName, e.when);
+          if (hist) {
+            bmSession = {
+              user_agent: hist.ua,
+              platform:   hist.platform,
+              browser:    hist.browser,
+              is_mobile:  hist.is_mobile,
+              is_ha_app:  hist.is_ha_app,
+              hash:       hist.hash,
+              id:         hist.hash,
+              source:     'ha_history',
+            };
           }
         }
       }
@@ -902,7 +1024,7 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
 // This endpoint reads those values — data survives even if Node is down for weeks
 app.get('/api/ha-sessions', requireToken, async (req, res) => {
   try {
-    const states = await haGet('/states', req.haToken);
+    const states = await getCachedStates(req.haToken);
     const sessionEntities = states.filter(s =>
       s.entity_id.startsWith('input_text.smt_session_')
     );
@@ -1006,7 +1128,7 @@ app.get('/api/logs/history/:entityId', requireToken, async (req, res) => {
 // e.g. sensor.abdkanash_iphone_battery_state -> device "AbdKanash iPhone"
 app.get('/api/connected-devices', requireToken, async (req, res) => {
   try {
-    const states = await haGet('/states', req.haToken);
+    const states = await getCachedStates(req.haToken);
 
     // Group entities by device prefix
     // Pattern: sensor.<prefix>_<sensor_type>
@@ -1125,7 +1247,7 @@ app.get('/api/connected-devices/:deviceName/report', requireToken, async (req, r
 
   try {
     // Find user_id associated with this device from person entities + known IDs
-    const states = await haGet('/states', req.haToken);
+    const states = await getCachedStates(req.haToken);
     const matchedUserIds = new Set();
 
     // Try to match person entities
@@ -1147,7 +1269,7 @@ app.get('/api/connected-devices/:deviceName/report', requireToken, async (req, r
     });
 
     const since = new Date(Date.now() - Number(hours) * 3600000).toISOString();
-    const lb = await haGet('/logbook/' + since, req.haToken);
+    const lb = await haGet('/logbook/' + since + '?minimal_response', req.haToken);
 
     const actions = [];
     if (Array.isArray(lb)) {
@@ -1219,7 +1341,7 @@ app.get('/api/audit', requireToken, async (req, res) => {
     try { const cfg = await haGet('/config', req.haToken); haVersion = cfg.version || 'unknown'; } catch (_) {}
 
     try {
-      const states = await haGet('/states', req.haToken);
+      const states = await getCachedStates(req.haToken);
       const unavailable = states.filter(s => s.state === 'unavailable' || s.state === 'unknown');
       if (unavailable.length > 0) findings.push({
         severity: 'WARNING', category: 'DEVICES',
@@ -1249,7 +1371,7 @@ app.get('/api/audit', requireToken, async (req, res) => {
     // Auth scan via logbook (error_log not available on all HA versions)
     try {
       const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-      const logbook = await haGet('/logbook/' + since, req.haToken);
+      const logbook = await haGet('/logbook/' + since + '?minimal_response', req.haToken);
       if (Array.isArray(logbook)) {
         const authFails = logbook.filter(e =>
           /invalid_auth|login.*fail|auth.*fail/i.test(JSON.stringify(e))
@@ -1313,7 +1435,7 @@ app.get('/api/ws/status', requireToken, (req, res) => {
 // Force reload Browser Mod sessions from REST API
 app.post('/api/ws/reload-sessions', requireToken, async (req, res) => {
   try {
-    const allStates = await haGet('/states', req.haToken);
+    const allStates = await getCachedStates(req.haToken);
     const bmStates  = allStates.filter(s => s.entity_id.startsWith('sensor.browser_mod_'));
     haWS.preloadBrowserModStates(bmStates);
     res.json({ ok: true, loaded: bmStates.length, sessions: haWS.getBrowserSessions().length });
