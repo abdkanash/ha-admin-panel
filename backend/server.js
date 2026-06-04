@@ -1,9 +1,14 @@
-const express = require('express');
-const cors    = require('cors');
-const path    = require('path');
-const haWS    = require('./ha-ws');
+const express       = require('express');
+const cors          = require('cors');
+const path          = require('path');
+const haWS          = require('./ha-ws');
+const sessionHist   = require('./ha-session-history');
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 require('dotenv').config();
+
+// HA Admin Panel — server.js
+// Version: 2.0.0 — 2026-06-04
+// Changelog: see CHANGELOG.md
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -662,7 +667,9 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
     const lb = await haGet('/logbook/' + since, req.haToken);
     if (!Array.isArray(lb)) return res.json([]);
 
-    lb.forEach((e, i) => {
+    let i = 0;
+    for (const e of lb) {
+      i++;
       const dom = e.domain || (e.entity_id || '').split('.')[0] || '';
 
       // Only controllable device domains
@@ -716,13 +723,19 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
       const cacheKey = e.context_id || (ts + '_' + (e.entity_id || ''));
       const cached   = cacheKey ? resolvedCache[cacheKey] : null;
 
-      // Find session: 1) live WS session, 2) HA-stored session (survives Node downtime)
+      // ── Session resolution — 4-layer chain ────────────────────────────────
+      // Layer 1: disk cache (context_id already resolved in a previous request)
+      // Layer 2: live WebSocket browserDevices{} (Node running, user navigated recently)
+      // Layer 3: HA input_text helpers (written by HA automation every navigation)
+      // Layer 4: HA history API — Browser Mod sensor state history (covers offline gap)
       let bmSession = null;
       if (!cached) {
+        // Layer 2 — live WS
         bmSession = haWS.findSessionByUser(resolvedUserName);
+
+        // Layer 3 — HA input_text (survives Node restarts, written by HA automation)
         if (!bmSession && resolvedUserName) {
-          // Fallback: check HA-stored sessions written by HA automation
-          const uKey = (resolvedUserName || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+          const uKey   = (resolvedUserName || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
           const haSess = haStoredSessions[uKey] || haStoredSessions[uKey.replace(/_+/g,'_')];
           if (haSess) {
             bmSession = {
@@ -733,7 +746,34 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
               is_ha_app:  haSess.is_ha_app,
               hash:       haSess.hash,
               id:         haSess.hash,
+              source:     'ha_input_text',
             };
+          }
+        }
+
+        // Layer 4 — HA history API (exact platform at exact action time)
+        // This resolves the "Node was offline for 2 days" problem.
+        // Queries Browser Mod sensor state history and finds the session
+        // active at the EXACT timestamp of this action.
+        if (!bmSession && resolvedUserName && e.when) {
+          try {
+            const hist = await sessionHist.resolveSessionAtTime(
+              HA_URL, req.haToken, resolvedUserName, e.when, Number(hours)
+            );
+            if (hist) {
+              bmSession = {
+                user_agent: hist.ua,
+                platform:   hist.platform,
+                browser:    hist.browser,
+                is_mobile:  hist.is_mobile,
+                is_ha_app:  hist.is_ha_app,
+                hash:       hist.hash,
+                id:         hist.hash,
+                source:     'ha_history',
+              };
+            }
+          } catch(histErr) {
+            console.warn('[SessionHistory] resolve error:', histErr.message);
           }
         }
       }
@@ -804,6 +844,9 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
         ws_user_agent:  cached ? cached.ws_user_agent  : wsUserAgent,
         ws_session_id:  cached ? cached.ws_session_id   : bmSession ? bmSession.id   : null,
         ws_session_hash:cached ? cached.ws_session_hash : bmSession ? bmSession.hash  : null,
+        // Which layer resolved the session — for debugging
+        // 'ws_live' | 'ha_input_text' | 'ha_history' | 'disk_cache' | null
+        session_source: cached ? 'disk_cache' : bmSession ? (bmSession.source || 'ws_live') : null,
         device_model:   deviceModel,
         // WHAT
         service:        ctx.service,
@@ -817,7 +860,7 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
         context_entity_id:   ctx.context_entity_id,
         context_entity_name: ctx.context_entity_name,
       });
-    });
+    } // end for...of lb
   } catch (e) {
     console.warn('device log error:', e.message);
     return res.status(502).json({ error: e.message });
@@ -838,6 +881,7 @@ app.get('/api/logs/devices', requireToken, async (req, res) => {
         device_source:  entry.device_source,
         device_name:    entry.device_name,
         device_model:   entry.device_model,
+        session_source: entry.session_source,
       };
       newResolutions++;
     }
@@ -887,6 +931,52 @@ app.get('/api/ha-sessions', requireToken, async (req, res) => {
     }).filter(s => s.hash && s.user_agent);
 
     res.json(sessions);
+  } catch(e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ── Session History — debug + cache control ───────────────────────────────────
+// GET /api/session-history?hours=48
+// Returns the full session timeline built from HA Browser Mod sensor history.
+// Use this to verify historical resolution is working correctly.
+app.get('/api/session-history', requireToken, async (req, res) => {
+  const { hours = 48, invalidate } = req.query;
+  if (invalidate === '1') sessionHist.invalidateCache();
+  try {
+    const timeline = await sessionHist.getTimeline(HA_URL, req.haToken, Number(hours));
+    const summary  = {};
+    Object.entries(timeline).forEach(([user, entries]) => {
+      summary[user] = entries.map(e => ({
+        hash:     e.hash,
+        platform: e.platform,
+        browser:  e.browser,
+        from:     new Date(e.from_ts).toISOString(),
+        until:    e.until_ts ? new Date(e.until_ts).toISOString() : 'active',
+      }));
+    });
+    res.json({ hours: Number(hours), users: Object.keys(timeline).length, timeline: summary });
+  } catch(e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// POST /api/session-history/invalidate — force rebuild on next request
+app.post('/api/session-history/invalidate', requireToken, (req, res) => {
+  sessionHist.invalidateCache();
+  res.json({ ok: true, message: 'Session history cache invalidated. Will rebuild on next request.' });
+});
+
+// GET /api/session-history/resolve?user=smt_admin&timestamp=2026-06-04T10:38:00
+// Test historical resolution for a specific user + time — for debugging
+app.get('/api/session-history/resolve', requireToken, async (req, res) => {
+  const { user, timestamp, hours = 48 } = req.query;
+  if (!user || !timestamp) return res.status(400).json({ error: 'user and timestamp required' });
+  try {
+    const result = await sessionHist.resolveSessionAtTime(
+      HA_URL, req.haToken, user, timestamp, Number(hours)
+    );
+    res.json({ user, timestamp, resolved: result || null, found: !!result });
   } catch(e) {
     res.status(502).json({ error: e.message });
   }
